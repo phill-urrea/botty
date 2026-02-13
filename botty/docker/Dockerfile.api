@@ -1,0 +1,56 @@
+# Botty API Dockerfile
+# Multi-stage build for optimized production image
+
+# Build stage
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+WORKDIR /src
+
+# Copy solution and project files first for layer caching
+COPY src/Botty.sln .
+COPY src/Botty.Api/Botty.Api.csproj Botty.Api/
+COPY src/Botty.Core/Botty.Core.csproj Botty.Core/
+COPY src/Botty.Memory/Botty.Memory.csproj Botty.Memory/
+COPY src/Botty.Kanban/Botty.Kanban.csproj Botty.Kanban/
+COPY src/Botty.LLM/Botty.LLM.csproj Botty.LLM/
+COPY src/Botty.Skills/Botty.Skills.csproj Botty.Skills/
+
+# Restore dependencies
+RUN dotnet restore Botty.sln
+
+# Copy all source files
+COPY src/ .
+
+# Build and publish
+RUN dotnet publish Botty.Api/Botty.Api.csproj -c Release -o /app/publish --no-restore
+
+# Runtime stage
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
+WORKDIR /app
+
+# Create non-root user for security
+RUN groupadd -r botty && useradd -r -g botty botty
+RUN chown -R botty:botty /app
+
+# Copy published files
+COPY --from=build --chown=botty:botty /app/publish .
+
+# Create data directory for Soul.md and other files
+RUN mkdir -p /app/data && chown botty:botty /app/data
+
+# Switch to non-root user
+USER botty
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+  CMD curl -f http://localhost:8080/health || exit 1
+
+# Expose port
+EXPOSE 8080
+
+# Set environment variables
+ENV ASPNETCORE_URLS=http://+:8080
+ENV ASPNETCORE_ENVIRONMENT=Production
+ENV Soul__FilePath=/app/data/Soul.md
+
+# Entry point
+ENTRYPOINT ["dotnet", "Botty.Api.dll"]

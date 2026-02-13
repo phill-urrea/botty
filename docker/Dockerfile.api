@@ -1,0 +1,52 @@
+# Build stage
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+WORKDIR /src
+
+# Copy solution and project files
+COPY Botty.slnx ./
+COPY src/Botty.Core/Botty.Core.csproj src/Botty.Core/
+COPY src/Botty.Hooks/Botty.Hooks.csproj src/Botty.Hooks/
+COPY src/Botty.Secrets/Botty.Secrets.csproj src/Botty.Secrets/
+COPY src/Botty.Memory/Botty.Memory.csproj src/Botty.Memory/
+COPY src/Botty.LLM/Botty.LLM.csproj src/Botty.LLM/
+COPY src/Botty.Skills/Botty.Skills.csproj src/Botty.Skills/
+COPY src/Botty.Messaging/Botty.Messaging.csproj src/Botty.Messaging/
+COPY src/Botty.Workflow/Botty.Workflow.csproj src/Botty.Workflow/
+COPY src/Botty.Scheduler/Botty.Scheduler.csproj src/Botty.Scheduler/
+COPY src/Botty.Infrastructure/Botty.Infrastructure.csproj src/Botty.Infrastructure/
+COPY src/Botty.Channels/Botty.Channels.csproj src/Botty.Channels/
+COPY src/Botty.Api/Botty.Api.csproj src/Botty.Api/
+COPY src/Botty.Skills.Tests/Botty.Skills.Tests.csproj src/Botty.Skills.Tests/
+
+# Restore dependencies
+RUN dotnet restore
+
+# Copy source code
+COPY src/ src/
+
+# Build and publish
+WORKDIR /src/src/Botty.Api
+RUN dotnet publish -c Release -o /app/publish
+
+# Runtime stage
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
+WORKDIR /app
+
+# Copy published app
+COPY --from=build /app/publish .
+
+# Install runtimes for script execution
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 python3-pip nodejs npm \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create config and workspace directories
+RUN mkdir -p /app/config /app/workspace/scripts
+
+# Set environment variables
+ENV ASPNETCORE_URLS=http://+:8080
+ENV ASPNETCORE_ENVIRONMENT=Production
+
+EXPOSE 8080
+
+ENTRYPOINT ["dotnet", "Botty.Api.dll"]

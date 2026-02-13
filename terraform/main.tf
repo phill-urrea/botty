@@ -1,0 +1,434 @@
+# Botty AI Assistant - GCP Infrastructure
+# This Terraform configuration deploys the complete Botty stack to GCP
+
+terraform {
+  required_version = ">= 1.5.0"
+
+  required_providers {
+    google = {
+      source  = "hashicorp/google"
+      version = "~> 5.0"
+    }
+    google-beta = {
+      source  = "hashicorp/google-beta"
+      version = "~> 5.0"
+    }
+  }
+
+  # Uncomment to use GCS backend for state storage
+  # backend "gcs" {
+  #   bucket = "botty-terraform-state"
+  #   prefix = "terraform/state"
+  # }
+}
+
+provider "google" {
+  project = var.project_id
+  region  = var.region
+}
+
+provider "google-beta" {
+  project = var.project_id
+  region  = var.region
+}
+
+# Enable required APIs
+resource "google_project_service" "required_apis" {
+  for_each = toset([
+    "run.googleapis.com",
+    "sqladmin.googleapis.com",
+    "secretmanager.googleapis.com",
+    "artifactregistry.googleapis.com",
+    "cloudbuild.googleapis.com",
+    "compute.googleapis.com",
+    "vpcaccess.googleapis.com",
+    "servicenetworking.googleapis.com",
+  ])
+
+  project            = var.project_id
+  service            = each.value
+  disable_on_destroy = false
+}
+
+# VPC Network for private connections
+resource "google_compute_network" "vpc" {
+  name                    = "${var.app_name}-vpc"
+  auto_create_subnetworks = false
+  depends_on              = [google_project_service.required_apis]
+}
+
+resource "google_compute_subnetwork" "subnet" {
+  name          = "${var.app_name}-subnet"
+  ip_cidr_range = "10.0.0.0/24"
+  region        = var.region
+  network       = google_compute_network.vpc.id
+
+  private_ip_google_access = true
+}
+
+# Private IP range for Cloud SQL
+resource "google_compute_global_address" "private_ip_range" {
+  name          = "${var.app_name}-private-ip"
+  purpose       = "VPC_PEERING"
+  address_type  = "INTERNAL"
+  prefix_length = 16
+  network       = google_compute_network.vpc.id
+}
+
+resource "google_service_networking_connection" "private_vpc_connection" {
+  network                 = google_compute_network.vpc.id
+  service                 = "servicenetworking.googleapis.com"
+  reserved_peering_ranges = [google_compute_global_address.private_ip_range.name]
+}
+
+# VPC Access Connector for Cloud Run
+resource "google_vpc_access_connector" "connector" {
+  name          = "${var.app_name}-connector"
+  region        = var.region
+  network       = google_compute_network.vpc.name
+  ip_cidr_range = "10.8.0.0/28"
+
+  depends_on = [google_project_service.required_apis]
+}
+
+# Artifact Registry for container images
+resource "google_artifact_registry_repository" "repo" {
+  location      = var.region
+  repository_id = var.app_name
+  format        = "DOCKER"
+  description   = "Docker repository for Botty AI Assistant"
+
+  depends_on = [google_project_service.required_apis]
+}
+
+# Cloud SQL PostgreSQL instance
+resource "google_sql_database_instance" "postgres" {
+  name             = "${var.app_name}-db"
+  database_version = "POSTGRES_16"
+  region           = var.region
+
+  settings {
+    tier              = var.db_tier
+    availability_type = var.environment == "production" ? "REGIONAL" : "ZONAL"
+    disk_size         = var.db_disk_size
+    disk_type         = "PD_SSD"
+
+    ip_configuration {
+      ipv4_enabled    = false
+      private_network = google_compute_network.vpc.id
+    }
+
+    database_flags {
+      name  = "cloudsql.enable_pgvector"
+      value = "on"
+    }
+
+    backup_configuration {
+      enabled                        = true
+      point_in_time_recovery_enabled = var.environment == "production"
+      start_time                     = "03:00"
+    }
+
+    maintenance_window {
+      day  = 7 # Sunday
+      hour = 4
+    }
+  }
+
+  deletion_protection = var.environment == "production"
+
+  depends_on = [google_service_networking_connection.private_vpc_connection]
+}
+
+resource "google_sql_database" "botty" {
+  name     = "botty"
+  instance = google_sql_database_instance.postgres.name
+}
+
+resource "google_sql_user" "botty" {
+  name     = "botty"
+  instance = google_sql_database_instance.postgres.name
+  password = random_password.db_password.result
+}
+
+resource "random_password" "db_password" {
+  length  = 32
+  special = false
+}
+
+# Secret Manager secrets
+resource "google_secret_manager_secret" "db_password" {
+  secret_id = "${var.app_name}-db-password"
+
+  replication {
+    auto {}
+  }
+
+  depends_on = [google_project_service.required_apis]
+}
+
+resource "google_secret_manager_secret_version" "db_password" {
+  secret      = google_secret_manager_secret.db_password.id
+  secret_data = random_password.db_password.result
+}
+
+resource "google_secret_manager_secret" "anthropic_api_key" {
+  secret_id = "${var.app_name}-anthropic-api-key"
+
+  replication {
+    auto {}
+  }
+
+  depends_on = [google_project_service.required_apis]
+}
+
+# Service Account for Cloud Run
+resource "google_service_account" "cloudrun" {
+  account_id   = "${var.app_name}-cloudrun"
+  display_name = "Botty Cloud Run Service Account"
+}
+
+# Grant permissions to service account
+resource "google_project_iam_member" "cloudrun_secretmanager" {
+  project = var.project_id
+  role    = "roles/secretmanager.secretAccessor"
+  member  = "serviceAccount:${google_service_account.cloudrun.email}"
+}
+
+resource "google_project_iam_member" "cloudrun_cloudsql" {
+  project = var.project_id
+  role    = "roles/cloudsql.client"
+  member  = "serviceAccount:${google_service_account.cloudrun.email}"
+}
+
+# Cloud Run - API Service
+resource "google_cloud_run_v2_service" "api" {
+  name     = "${var.app_name}-api"
+  location = var.region
+  ingress  = "INGRESS_TRAFFIC_ALL"
+
+  template {
+    service_account = google_service_account.cloudrun.email
+
+    scaling {
+      min_instance_count = var.environment == "production" ? 1 : 0
+      max_instance_count = var.api_max_instances
+    }
+
+    vpc_access {
+      connector = google_vpc_access_connector.connector.id
+      egress    = "PRIVATE_RANGES_ONLY"
+    }
+
+    containers {
+      image = "${var.region}-docker.pkg.dev/${var.project_id}/${var.app_name}/api:${var.image_tag}"
+
+      resources {
+        limits = {
+          cpu    = var.api_cpu
+          memory = var.api_memory
+        }
+      }
+
+      env {
+        name  = "ASPNETCORE_ENVIRONMENT"
+        value = var.environment == "production" ? "Production" : "Development"
+      }
+
+      env {
+        name = "ConnectionStrings__DefaultConnection"
+        value_source {
+          secret_key_ref {
+            secret  = google_secret_manager_secret.db_connection_string.secret_id
+            version = "latest"
+          }
+        }
+      }
+
+      env {
+        name = "Claude__ApiKey"
+        value_source {
+          secret_key_ref {
+            secret  = google_secret_manager_secret.anthropic_api_key.secret_id
+            version = "latest"
+          }
+        }
+      }
+
+      startup_probe {
+        http_get {
+          path = "/health"
+        }
+        initial_delay_seconds = 10
+        period_seconds        = 10
+        failure_threshold     = 3
+      }
+
+      liveness_probe {
+        http_get {
+          path = "/health"
+        }
+        period_seconds = 30
+      }
+    }
+  }
+
+  depends_on = [
+    google_project_service.required_apis,
+    google_sql_database.botty,
+  ]
+}
+
+# Database connection string secret
+resource "google_secret_manager_secret" "db_connection_string" {
+  secret_id = "${var.app_name}-db-connection-string"
+
+  replication {
+    auto {}
+  }
+
+  depends_on = [google_project_service.required_apis]
+}
+
+resource "google_secret_manager_secret_version" "db_connection_string" {
+  secret      = google_secret_manager_secret.db_connection_string.id
+  secret_data = "Host=${google_sql_database_instance.postgres.private_ip_address};Database=botty;Username=botty;Password=${random_password.db_password.result}"
+}
+
+# Cloud Run - WhatsApp Bridge Service
+resource "google_cloud_run_v2_service" "whatsapp" {
+  name     = "${var.app_name}-whatsapp"
+  location = var.region
+  ingress  = "INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER"
+
+  template {
+    service_account = google_service_account.cloudrun.email
+
+    scaling {
+      min_instance_count = 1  # WhatsApp needs persistent connection
+      max_instance_count = 1
+    }
+
+    vpc_access {
+      connector = google_vpc_access_connector.connector.id
+      egress    = "ALL_TRAFFIC"
+    }
+
+    containers {
+      image = "${var.region}-docker.pkg.dev/${var.project_id}/${var.app_name}/whatsapp-bridge:${var.image_tag}"
+
+      resources {
+        limits = {
+          cpu    = "1"
+          memory = "2Gi"
+        }
+      }
+
+      env {
+        name  = "PORT"
+        value = "8080"
+      }
+
+      env {
+        name  = "BOTTY_API_URL"
+        value = google_cloud_run_v2_service.api.uri
+      }
+
+      env {
+        name  = "HEADLESS"
+        value = "true"
+      }
+
+      env {
+        name  = "AUTO_CREATE_TASKS"
+        value = "true"
+      }
+
+      volume_mounts {
+        name       = "whatsapp-session"
+        mount_path = "/app/.wwebjs_auth"
+      }
+    }
+
+    volumes {
+      name = "whatsapp-session"
+      empty_dir {
+        medium     = "MEMORY"
+        size_limit = "512Mi"
+      }
+    }
+  }
+
+  depends_on = [google_cloud_run_v2_service.api]
+}
+
+# Cloud Run - Admin UI Service
+resource "google_cloud_run_v2_service" "admin" {
+  name     = "${var.app_name}-admin"
+  location = var.region
+  ingress  = "INGRESS_TRAFFIC_ALL"
+
+  template {
+    service_account = google_service_account.cloudrun.email
+
+    scaling {
+      min_instance_count = var.environment == "production" ? 1 : 0
+      max_instance_count = var.admin_max_instances
+    }
+
+    containers {
+      image = "${var.region}-docker.pkg.dev/${var.project_id}/${var.app_name}/admin-ui:${var.image_tag}"
+
+      resources {
+        limits = {
+          cpu    = "1"
+          memory = "512Mi"
+        }
+      }
+
+      env {
+        name  = "NEXT_PUBLIC_API_URL"
+        value = google_cloud_run_v2_service.api.uri
+      }
+
+      env {
+        name  = "NEXT_PUBLIC_WS_URL"
+        value = replace(google_cloud_run_v2_service.whatsapp.uri, "https://", "wss://")
+      }
+    }
+  }
+
+  depends_on = [google_cloud_run_v2_service.api]
+}
+
+# Allow unauthenticated access to public services
+resource "google_cloud_run_v2_service_iam_member" "api_public" {
+  project  = var.project_id
+  location = var.region
+  name     = google_cloud_run_v2_service.api.name
+  role     = "roles/run.invoker"
+  member   = "allUsers"
+}
+
+resource "google_cloud_run_v2_service_iam_member" "admin_public" {
+  project  = var.project_id
+  location = var.region
+  name     = google_cloud_run_v2_service.admin.name
+  role     = "roles/run.invoker"
+  member   = "allUsers"
+}
+
+# Cloud Scheduler for cron jobs (optional - can use internal scheduler)
+resource "google_cloud_scheduler_job" "health_check" {
+  name        = "${var.app_name}-health-check"
+  description = "Periodic health check to keep services warm"
+  schedule    = "*/5 * * * *"
+  region      = var.region
+
+  http_target {
+    http_method = "GET"
+    uri         = "${google_cloud_run_v2_service.api.uri}/health"
+  }
+
+  depends_on = [google_project_service.required_apis]
+}

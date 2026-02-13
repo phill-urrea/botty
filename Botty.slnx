@@ -1,0 +1,16 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Botty.Api/Botty.Api.csproj" />
+    <Project Path="src/Botty.Hooks/Botty.Hooks.csproj" />
+    <Project Path="src/Botty.Core/Botty.Core.csproj" />
+    <Project Path="src/Botty.Infrastructure/Botty.Infrastructure.csproj" />
+    <Project Path="src/Botty.LLM/Botty.LLM.csproj" />
+    <Project Path="src/Botty.Memory/Botty.Memory.csproj" />
+    <Project Path="src/Botty.Messaging/Botty.Messaging.csproj" />
+    <Project Path="src/Botty.Scheduler/Botty.Scheduler.csproj" />
+    <Project Path="src/Botty.Secrets/Botty.Secrets.csproj" />
+    <Project Path="src/Botty.Skills/Botty.Skills.csproj" />
+    <Project Path="src/Botty.Skills.Tests/Botty.Skills.Tests.csproj" />
+    <Project Path="src/Botty.Workflow/Botty.Workflow.csproj" />
+  </Folder>
+</Solution>

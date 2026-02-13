@@ -1,0 +1,89 @@
+services:
+  # PostgreSQL with pgvector extension
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: botty-postgres
+    environment:
+      POSTGRES_USER: botty
+      POSTGRES_PASSWORD: botty_dev_password
+      POSTGRES_DB: botty
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U botty -d botty"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Botty API
+  api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.api
+    container_name: botty-api
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ConnectionStrings__DefaultConnection=Host=postgres;Database=botty;Username=botty;Password=botty_dev_password
+      - WhatsAppBridge__BaseUrl=http://whatsapp-bridge:3001
+      - Channels__WhatsApp__BridgeUrl=http://whatsapp-bridge:3001
+      - BOTTY_SECRET_OAUTH_PROVIDERS_GOOGLE_CLIENT_ID=your_google_client_id.apps.googleusercontent.com
+      - BOTTY_SECRET_OAUTH_PROVIDERS_GOOGLE_CLIENT_SECRET=your_google_client_secret
+      - BOTTY_SECRET_OAUTH_PROVIDERS_GOOGLE_REDIRECT_URI=http://localhost:5001/api/oauth/providers/google/callback
+      - BOTTY_SECRET_OAUTH_PROVIDERS_GOOGLE_SCOPES=openid email profile https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/calendar.events
+      - BOTTY_SECRET_SKILLS_BRAVE_SEARCH_API_KEY=your_brave_search_api_key
+    ports:
+      - "5001:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ../config:/app/config:ro
+      - scripts_workspace:/app/workspace
+
+  # WhatsApp Bridge (Node.js sidecar)
+  whatsapp-bridge:
+    build:
+      context: ../whatsapp-bridge
+      dockerfile: Dockerfile
+    container_name: botty-whatsapp
+    environment:
+      - PORT=3001
+      - BOTTY_API_URL=http://api:8080
+      - HEADLESS=true
+      - AUTO_CREATE_TASKS=true
+      - LOG_LEVEL=info
+    ports:
+      - "3001:3001"
+    depends_on:
+      - api
+    volumes:
+      - whatsapp_session:/app/.wwebjs_auth
+      - whatsapp_logs:/app/logs
+    shm_size: '1gb'  # Required for Chromium
+
+  # Admin UI (Next.js) - NEXT_PUBLIC_* must be set at build time (baked into client bundle)
+  admin-ui:
+    build:
+      context: ../admin-ui
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:5001/api
+        NEXT_PUBLIC_WS_URL: ws://localhost:3001
+    container_name: botty-admin
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:5001/api
+      - NEXT_PUBLIC_WS_URL=ws://localhost:3001
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+      - whatsapp-bridge
+
+volumes:
+  postgres_data:
+  whatsapp_session:
+  whatsapp_logs:
+  scripts_workspace:

@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Botty.Core\Botty.Core.csproj" />
+    <ProjectReference Include="..\Botty.Secrets\Botty.Secrets.csproj" />
+    <ProjectReference Include="..\Botty.Memory\Botty.Memory.csproj" />
+    <ProjectReference Include="..\Botty.LLM\Botty.LLM.csproj" />
+    <ProjectReference Include="..\Botty.Skills\Botty.Skills.csproj" />
+    <ProjectReference Include="..\Botty.Messaging\Botty.Messaging.csproj" />
+    <ProjectReference Include="..\Botty.Workflow\Botty.Workflow.csproj" />
+    <ProjectReference Include="..\Botty.Scheduler\Botty.Scheduler.csproj" />
+    <ProjectReference Include="..\Botty.Infrastructure\Botty.Infrastructure.csproj" />
+    <ProjectReference Include="..\Botty.Channels\Botty.Channels.csproj" />
+    <ProjectReference Include="..\Botty.Hooks\Botty.Hooks.csproj" />
+  </ItemGroup>
+
+</Project>
