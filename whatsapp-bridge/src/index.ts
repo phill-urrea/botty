@@ -90,7 +90,12 @@ async function main(): Promise<void> {
     // Forward user-typed messages (not bot API replies) so the LLM can respond
     if (!whatsapp.isBotSending(message.to) && config.bottyApiUrl) {
       // For fromMe messages, the conversation partner is message.to
-      const adjusted: WhatsAppMessage = { ...message, from: message.to };
+      const adjusted: WhatsAppMessage = {
+        ...message,
+        from: message.to,
+        chatId: message.to,
+        senderId: message.to,
+      };
 
       try {
         await bottyApi.sendFeedIncoming(adjusted);

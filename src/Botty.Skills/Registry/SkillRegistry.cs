@@ -103,6 +103,20 @@ public class SkillRegistry : ISkillRegistry
     /// </summary>
     public async Task<SkillResult> ExecuteToolAsync(string toolName, string arguments, CancellationToken ct = default)
     {
+        return await ExecuteToolAsync(toolName, arguments, null, null, null, ct);
+    }
+
+    /// <summary>
+    /// Executes a tool call by finding the appropriate skill with explicit context metadata.
+    /// </summary>
+    public async Task<SkillResult> ExecuteToolAsync(
+        string toolName,
+        string arguments,
+        Guid? conversationId,
+        Guid? taskId,
+        Guid? userId,
+        CancellationToken ct = default)
+    {
         foreach (var skill in _skills.Values)
         {
             var tools = skill.GetTools();
@@ -111,7 +125,10 @@ public class SkillRegistry : ISkillRegistry
                 var context = new SkillContext
                 {
                     ToolName = toolName,
-                    Arguments = arguments
+                    Arguments = arguments,
+                    ConversationId = conversationId,
+                    TaskId = taskId,
+                    UserId = userId
                 };
                 return await skill.ExecuteAsync(context, ct);
             }

@@ -114,6 +114,8 @@ await app.Services.InitializeSkillsAsync();
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<Botty.Infrastructure.Data.BottyDbContext>();
+    await ConversationSchemaEnsurer.EnsureAsync(db);
+    await KanbanSchemaEnsurer.EnsureAsync(db);
     await MemorySchemaEnsurer.EnsureAsync(db);
     await HooksSchemaEnsurer.EnsureAsync(db);
     await scope.ServiceProvider.GetRequiredService<HookService>().LoadHooksIntoRegistryAsync();

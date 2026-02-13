@@ -1,6 +1,8 @@
 using Botty.Core.Enums;
 using Botty.Core.Interfaces;
 using Botty.Core.Models;
+using Botty.Hooks;
+using Botty.Hooks.Models;
 using Microsoft.Extensions.Logging;
 
 namespace Botty.Workflow.Services;
@@ -11,6 +13,7 @@ namespace Botty.Workflow.Services;
 public class ApprovalService : IApprovalService
 {
     private readonly IKanbanRepository _repository;
+    private readonly IHookRegistry? _hookRegistry;
     private readonly ILogger<ApprovalService> _logger;
 
     // Task types that always require approval
@@ -26,10 +29,12 @@ public class ApprovalService : IApprovalService
 
     public ApprovalService(
         IKanbanRepository repository,
-        ILogger<ApprovalService> logger)
+        ILogger<ApprovalService> logger,
+        IHookRegistry? hookRegistry = null)
     {
         _repository = repository;
         _logger = logger;
+        _hookRegistry = hookRegistry;
     }
 
     public async Task<KanbanTask> RequestApprovalAsync(ApprovalRequest request, CancellationToken ct = default)
@@ -42,9 +47,13 @@ public class ApprovalService : IApprovalService
             Title = request.Title,
             Description = request.Description,
             Lane = KanbanLane.NeedsApproval,
-            Assignee = TaskAssignee.User, // User must approve
+            Assignee = request.Assignee,
             Type = request.Type,
             Priority = request.Priority,
+            ConversationId = request.ConversationId,
+            UserId = request.UserId,
+            Source = request.Source,
+            ExternalId = request.ExternalId,
             PendingActionData = request.Action
         };
 
@@ -79,7 +88,17 @@ public class ApprovalService : IApprovalService
         task.RejectionReason = null; // Clear any previous rejection
         await _repository.UpdateAsync(task, ct);
 
-        return await _repository.MoveToLaneAsync(taskId, targetLane, ct);
+        var movedTask = await _repository.MoveToLaneAsync(taskId, targetLane, ct);
+        if (_hookRegistry != null && movedTask.Assignee == TaskAssignee.Assistant)
+        {
+            await _hookRegistry.PublishEventAsync(HookTrigger.TaskApproved, new
+            {
+                TaskId = movedTask.Id,
+                Task = movedTask
+            }, ct);
+        }
+
+        return movedTask;
     }
 
     public async Task<KanbanTask> RejectAsync(Guid taskId, string reason, CancellationToken ct = default)

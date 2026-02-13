@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
+    <ProjectReference Include="..\Botty.Channels\Botty.Channels.csproj" />
     <ProjectReference Include="..\Botty.Core\Botty.Core.csproj" />
     <ProjectReference Include="..\Botty.Hooks\Botty.Hooks.csproj" />
     <ProjectReference Include="..\Botty.Infrastructure\Botty.Infrastructure.csproj" />

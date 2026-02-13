@@ -63,11 +63,17 @@ public class PlaceholderLlmProvider : ILlmProvider
         throw new NotSupportedException("Use IEmbeddingProvider for embeddings");
     }
 
-    public async IAsyncEnumerable<string> StreamCompleteAsync(
+    public async IAsyncEnumerable<StreamDelta> StreamCompleteAsync(
         LlmRequest request,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
     {
         var response = await CompleteAsync(request, ct);
-        yield return response.Content;
+        yield return new StreamDelta { Type = "text", Text = response.Content };
+        yield return new StreamDelta
+        {
+            Type = "done",
+            FinishReason = response.FinishReason,
+            Usage = response.Usage
+        };
     }
 }

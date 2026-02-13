@@ -64,9 +64,40 @@ public interface ILlmProvider
     Task<float[]> GetEmbeddingAsync(string text, CancellationToken ct = default);
 
     /// <summary>
-    /// Streams a completion response.
+    /// Streams a completion response as structured deltas.
     /// </summary>
-    IAsyncEnumerable<string> StreamCompleteAsync(LlmRequest request, CancellationToken ct = default);
+    IAsyncEnumerable<StreamDelta> StreamCompleteAsync(LlmRequest request, CancellationToken ct = default);
+}
+
+/// <summary>
+/// A structured delta event from a streaming LLM response.
+/// </summary>
+public class StreamDelta
+{
+    /// <summary>
+    /// Type of delta: "text", "tool_use", or "done".
+    /// </summary>
+    public required string Type { get; set; }
+
+    /// <summary>
+    /// Text content (for "text" deltas).
+    /// </summary>
+    public string? Text { get; set; }
+
+    /// <summary>
+    /// Completed tool call (for "tool_use" deltas).
+    /// </summary>
+    public LlmToolCall? ToolCall { get; set; }
+
+    /// <summary>
+    /// Token usage (for "done" deltas).
+    /// </summary>
+    public TokenUsage? Usage { get; set; }
+
+    /// <summary>
+    /// Finish reason (for "done" deltas).
+    /// </summary>
+    public string? FinishReason { get; set; }
 }
 
 /// <summary>

@@ -181,6 +181,8 @@ public class WhatsAppController : ControllerBase
             Type = TaskType.SendMessage,
             Assignee = TaskAssignee.Assistant,
             Priority = request.Priority ?? TaskPriority.Normal,
+            Source = "whatsapp",
+            ExternalId = request.To,
             PendingAction = new PendingAction
             {
                 ActionType = "send_whatsapp",
@@ -189,7 +191,9 @@ public class WhatsAppController : ControllerBase
                 {
                     ["to"] = request.To,
                     ["body"] = request.Body,
-                    ["recipientName"] = request.RecipientName ?? request.To
+                    ["recipientName"] = request.RecipientName ?? request.To,
+                    ["source"] = "whatsapp",
+                    ["externalId"] = request.To
                 },
                 Preview = request.Body.Length > 100 ? request.Body[..100] + "..." : request.Body,
                 RequiresApproval = true

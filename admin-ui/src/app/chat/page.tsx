@@ -16,9 +16,16 @@ function formatTime(iso: string): string {
 }
 
 function messageLabel(msg: FeedMessage): string {
-  if (msg.role === 'user') return 'You';
+  if (msg.source === 'admin' && msg.role === 'user') return 'You';
   if (msg.role === 'assistant') return 'Assistant';
+  if (msg.source !== 'admin' && (msg.role === 'user' || msg.role === 'thirdparty')) {
+    if (msg.senderName) return `${msg.source}: ${msg.senderName}`;
+    if (msg.senderId) return `${msg.source}: ${msg.senderId}`;
+    if (msg.externalId) return `${msg.source}: ${msg.externalId}`;
+    return msg.source;
+  }
   if (msg.senderName) return `${msg.source}: ${msg.senderName}`;
+  if (msg.senderId) return `${msg.source}: ${msg.senderId}`;
   if (msg.externalId) return `${msg.source}: ${msg.externalId}`;
   return msg.source;
 }
@@ -84,6 +91,22 @@ export default function ChatPage() {
           mergeMessage(m);
         } else if (data?.type === 'typing_indicator') {
           setIsAssistantTyping(data.isTyping);
+        } else if (data?.type === 'assistant_delta') {
+          const { messageId, delta } = data as { messageId: string; delta: string };
+          setIsAssistantTyping(false);
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === messageId ? { ...m, content: m.content + delta } : m
+            )
+          );
+        } else if (data?.type === 'assistant_done') {
+          const { messageId, content } = data as { messageId: string; content: string };
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === messageId ? { ...m, content } : m
+            )
+          );
+          setIsAssistantTyping(false);
         }
       } catch {
         // ignore parse errors
@@ -107,15 +130,6 @@ export default function ChatPage() {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [messages, isAssistantTyping]);
 
-  const loadFeed = useCallback(async () => {
-    try {
-      const res = await feedApi.getFeed();
-      setMessages(res.messages || []);
-    } catch {
-      // keep existing messages
-    }
-  }, []);
-
   const handleSend = async () => {
     const text = input.trim();
     if (!text || sending) return;
@@ -133,14 +147,14 @@ export default function ChatPage() {
         extractMemories: true,
       });
       if (res.conversationId) setConversationId(res.conversationId);
-      // Refetch feed so we have the new messages (WS may deliver too; mergeMessage dedupes by id)
-      await loadFeed();
+      // Streaming via WebSocket handles real-time message delivery;
+      // no need to refetch feed here.
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to send');
       setInput(text);
     } finally {
       setSending(false);
-      setIsAssistantTyping(false);
+      // Don't clear isAssistantTyping here — assistant_done event will clear it
     }
   };
 
@@ -176,7 +190,9 @@ export default function ChatPage() {
             </div>
           )}
           {!loading &&
-            messages.map((msg) => (
+            messages
+              .filter((msg) => msg.role !== 'assistant' || msg.content)
+              .map((msg) => (
               <div
                 key={msg.id}
                 className={`flex gap-3 rounded-lg p-3 ${

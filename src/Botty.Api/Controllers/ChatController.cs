@@ -1,5 +1,9 @@
+using System.Text;
+using System.Text.Json;
 using Botty.Core.Interfaces;
 using Botty.Core.Models;
+using Botty.Core.Enums;
+using Botty.Core.Services;
 using Botty.LLM.Services;
 using Microsoft.AspNetCore.Mvc;
 using Botty.Api.Services;
@@ -23,6 +27,7 @@ public class ChatController : ControllerBase
     private readonly IConversationRepository _conversationRepository;
     private readonly IFeedBroadcastService _feedBroadcast;
     private readonly ISkillRegistry _skillRegistry;
+    private readonly IApprovalService _approvalService;
     private readonly IConfiguration _configuration;
     private readonly ILogger<ChatController> _logger;
 
@@ -31,6 +36,7 @@ public class ChatController : ControllerBase
         IConversationRepository conversationRepository,
         IFeedBroadcastService feedBroadcast,
         ISkillRegistry skillRegistry,
+        IApprovalService approvalService,
         IConfiguration configuration,
         ILogger<ChatController> logger)
     {
@@ -38,6 +44,7 @@ public class ChatController : ControllerBase
         _conversationRepository = conversationRepository;
         _feedBroadcast = feedBroadcast;
         _skillRegistry = skillRegistry;
+        _approvalService = approvalService;
         _configuration = configuration;
         _logger = logger;
     }
@@ -48,34 +55,158 @@ public class ChatController : ControllerBase
         return Guid.TryParse(value, out var id) ? id : FallbackAdminUserId;
     }
 
-    /// <summary>
-    /// Calls the orchestrator and runs the tool execution loop until no tool calls or max iterations.
-    /// </summary>
-    private async Task<ConversationResponse> RunChatWithToolLoopAsync(
-        ConversationRequest request, CancellationToken ct, Guid? conversationId = null, string? source = null)
+    private async Task<KanbanTask> CreateApprovalTaskForToolCallAsync(
+        LlmToolCall toolCall,
+        TaskType taskType,
+        Guid conversationId,
+        Guid userId,
+        string source,
+        string? externalId,
+        CancellationToken ct)
     {
-        var response = await _orchestrator.ChatAsync(request, ct);
+        var payload = new Dictionary<string, string>
+        {
+            ["toolName"] = toolCall.Name,
+            ["arguments"] = toolCall.Arguments ?? "{}",
+            ["conversationId"] = conversationId.ToString(),
+            ["userId"] = userId.ToString(),
+            ["source"] = source
+        };
+        if (!string.IsNullOrWhiteSpace(externalId))
+            payload["externalId"] = externalId;
+
+        var preview = $"{toolCall.Name}({(toolCall.Arguments ?? "{}")})";
+        if (preview.Length > 500)
+        {
+            preview = preview[..500] + "...";
+        }
+
+        var request = new ApprovalRequest
+        {
+            Title = $"Approve tool call: {toolCall.Name}",
+            Description = "The assistant requested to execute a side-effecting tool call.",
+            Type = taskType,
+            Priority = TaskPriority.Normal,
+            Assignee = TaskAssignee.Assistant,
+            ConversationId = conversationId,
+            UserId = userId,
+            Source = source,
+            ExternalId = externalId,
+            Action = new PendingAction
+            {
+                ActionType = "ExecuteSkillTool",
+                Description = $"Execute tool '{toolCall.Name}' after approval.",
+                Payload = payload,
+                Preview = preview,
+                RequiresApproval = true
+            }
+        };
+
+        return await _approvalService.RequestApprovalAsync(request, ct);
+    }
+
+    /// <summary>
+    /// Streams via the orchestrator and runs the tool execution loop, broadcasting deltas over WebSocket.
+    /// Returns the accumulated content, final usage, and finish reason.
+    /// </summary>
+    private async Task<(string Content, TokenUsage? Usage, string? FinishReason, List<LlmToolCall>? ToolCalls)> RunStreamingToolLoopAsync(
+        ConversationRequest request,
+        Guid conversationId,
+        Guid userId,
+        Guid messageId,
+        string source,
+        string? externalId,
+        CancellationToken ct)
+    {
+        var totalContent = new StringBuilder();
+        TokenUsage? lastUsage = null;
+        string? lastFinishReason = null;
         var iterations = 0;
 
-        while (response.ToolCalls is { Count: > 0 } toolCalls && iterations < MaxToolLoopIterations)
+        while (iterations <= MaxToolLoopIterations)
         {
-            iterations++;
+            var pendingToolCalls = new List<LlmToolCall>();
+            var turnContent = new StringBuilder();
 
-            // Re-broadcast typing indicator so it stays active during multi-turn tool use
-            if (conversationId.HasValue && source != null)
+            await foreach (var delta in _orchestrator.StreamChatAsync(request, ct))
             {
-                _feedBroadcast.BroadcastTypingIndicator(new TypingIndicatorDto
+                switch (delta.Type)
                 {
-                    ConversationId = conversationId.Value,
-                    Source = source,
-                    IsTyping = true,
-                    Timestamp = DateTime.UtcNow
-                });
+                    case "text" when !string.IsNullOrEmpty(delta.Text):
+                        turnContent.Append(delta.Text);
+                        _feedBroadcast.BroadcastAssistantDelta(new AssistantDeltaDto
+                        {
+                            ConversationId = conversationId,
+                            MessageId = messageId,
+                            Delta = delta.Text
+                        });
+                        break;
+
+                    case "tool_use" when delta.ToolCall != null:
+                        pendingToolCalls.Add(delta.ToolCall);
+                        break;
+
+                    case "done":
+                        lastUsage = delta.Usage;
+                        lastFinishReason = delta.FinishReason;
+                        break;
+                }
             }
 
-            var toolResults = new List<LlmToolResult>();
-            foreach (var tc in toolCalls)
+            totalContent.Append(turnContent);
+
+            if (pendingToolCalls.Count == 0)
+                break;
+
+            // Execute tools
+            iterations++;
+
+            // Re-broadcast typing indicator during tool execution
+            _feedBroadcast.BroadcastTypingIndicator(new TypingIndicatorDto
             {
+                ConversationId = conversationId,
+                Source = source,
+                IsTyping = true,
+                Timestamp = DateTime.UtcNow
+            });
+
+            var toolResults = new List<LlmToolResult>();
+            var pendingApprovalTasks = new List<(string ToolName, Guid TaskId)>();
+            foreach (var tc in pendingToolCalls)
+            {
+                if (ToolApprovalPolicy.TryGetApprovalTaskType(tc.Name, out var taskType))
+                {
+                    var approvalTask = await CreateApprovalTaskForToolCallAsync(
+                        tc,
+                        taskType,
+                        conversationId,
+                        userId,
+                        source,
+                        externalId,
+                        ct);
+                    var approvalPayload = JsonSerializer.Serialize(new
+                    {
+                        status = "pending_approval",
+                        taskId = approvalTask.Id,
+                        toolName = tc.Name,
+                        message = $"Execution of tool '{tc.Name}' is pending explicit approval."
+                    });
+
+                    toolResults.Add(new LlmToolResult
+                    {
+                        ToolUseId = tc.Id,
+                        Content = approvalPayload
+                    });
+
+                    _logger.LogInformation(
+                        "Tool {ToolName} requires approval. Created approval task {TaskId}.",
+                        tc.Name,
+                        approvalTask.Id);
+
+                    pendingApprovalTasks.Add((tc.Name, approvalTask.Id));
+                    continue;
+                }
+
                 var skillResult = await _skillRegistry.ExecuteToolAsync(tc.Name, tc.Arguments ?? "{}", ct);
                 if (!skillResult.Success)
                 {
@@ -86,11 +217,21 @@ public class ChatController : ControllerBase
                 toolResults.Add(new LlmToolResult { ToolUseId = tc.Id, Content = content });
             }
 
+            if (pendingApprovalTasks.Count > 0)
+            {
+                var summary = BuildPendingApprovalMessage(pendingApprovalTasks);
+                totalContent.Clear();
+                totalContent.Append(summary);
+                lastFinishReason = "approval_required";
+                break;
+            }
+
+            // Append assistant + tool results to conversation for next turn
             request.Messages.Add(new ChatMessage
             {
                 Role = "assistant",
-                Content = response.Content,
-                ToolCalls = toolCalls
+                Content = turnContent.ToString(),
+                ToolCalls = pendingToolCalls
             });
             request.Messages.Add(new ChatMessage
             {
@@ -98,15 +239,25 @@ public class ChatController : ControllerBase
                 Content = string.Empty,
                 ToolResults = toolResults
             });
-
-            response = await _orchestrator.ChatAsync(request, ct);
         }
 
-        return response;
+        return (totalContent.ToString(), lastUsage, lastFinishReason, null);
+    }
+
+    private static string BuildPendingApprovalMessage(IReadOnlyList<(string ToolName, Guid TaskId)> approvals)
+    {
+        if (approvals.Count == 1)
+        {
+            var item = approvals[0];
+            return $"I prepared `{item.ToolName}` but have not executed it yet. Please approve task `{item.TaskId}` in Kanban to send it.";
+        }
+
+        var ids = string.Join(", ", approvals.Select(a => $"`{a.TaskId}`"));
+        return $"I prepared {approvals.Count} actions but have not executed them yet. Please approve these Kanban tasks: {ids}.";
     }
 
     /// <summary>
-    /// Sends a message and gets a response.
+    /// Sends a message and gets a response. Streams deltas over WebSocket in real time.
     /// </summary>
     [HttpPost]
     public async Task<ActionResult<ChatResponseDto>> Chat(
@@ -170,7 +321,14 @@ public class ChatController : ControllerBase
             foreach (var m in request.Messages!)
             {
                 var role = string.Equals(m.Role, "user", StringComparison.OrdinalIgnoreCase) ? MessageRole.User : MessageRole.System;
-                var persisted = await _conversationRepository.AppendMessageAsync(conversation.Id, role, m.Content, null, null, ct);
+                var persisted = await _conversationRepository.AppendMessageAsync(
+                    conversation.Id,
+                    role,
+                    m.Content,
+                    senderName: null,
+                    externalId: null,
+                    senderId: null,
+                    ct: ct);
                 _feedBroadcast.BroadcastNewMessage(new FeedMessageDto
                 {
                     Id = persisted.Id,
@@ -179,6 +337,7 @@ public class ChatController : ControllerBase
                     ExternalId = conversation.ExternalId,
                     Role = persisted.Role.ToString().ToLowerInvariant(),
                     Content = persisted.Content,
+                    SenderId = persisted.SenderId,
                     SenderName = persisted.SenderName,
                     CreatedAt = persisted.CreatedAt
                 });
@@ -192,10 +351,44 @@ public class ChatController : ControllerBase
                 Timestamp = DateTime.UtcNow
             });
 
-            ConversationResponse response;
+            // Create placeholder assistant message and broadcast it
+            var assistantMessage = await _conversationRepository.AppendMessageAsync(
+                conversation.Id,
+                MessageRole.Assistant,
+                string.Empty,
+                senderName: null,
+                externalId: null,
+                senderId: null,
+                ct: ct);
+            _feedBroadcast.BroadcastNewMessage(new FeedMessageDto
+            {
+                Id = assistantMessage.Id,
+                ConversationId = conversation.Id,
+                Source = conversation.Source,
+                ExternalId = conversation.ExternalId,
+                Role = assistantMessage.Role.ToString().ToLowerInvariant(),
+                Content = string.Empty,
+                SenderId = assistantMessage.SenderId,
+                SenderName = assistantMessage.SenderName,
+                CreatedAt = assistantMessage.CreatedAt
+            });
+
+            string finalContent;
+            TokenUsage? finalUsage;
+            string? finishReason;
             try
             {
-                response = await RunChatWithToolLoopAsync(conversationRequest, ct, conversation.Id, conversation.Source);
+                var result = await RunStreamingToolLoopAsync(
+                    conversationRequest,
+                    conversation.Id,
+                    effectiveUserId,
+                    assistantMessage.Id,
+                    conversation.Source,
+                    conversation.ExternalId,
+                    ct);
+                finalContent = result.Content;
+                finalUsage = result.Usage;
+                finishReason = result.FinishReason;
             }
             finally
             {
@@ -208,39 +401,37 @@ public class ChatController : ControllerBase
                 });
             }
 
-            var assistantMessage = await _conversationRepository.AppendMessageAsync(
-                conversation.Id, MessageRole.Assistant, response.Content, null, null, ct);
-            _feedBroadcast.BroadcastNewMessage(new FeedMessageDto
+            // Update persisted message with final content
+            await _conversationRepository.UpdateMessageContentAsync(assistantMessage.Id, finalContent, ct);
+
+            // Broadcast assistant_done
+            _feedBroadcast.BroadcastAssistantDone(new AssistantDoneDto
             {
-                Id = assistantMessage.Id,
                 ConversationId = conversation.Id,
-                Source = conversation.Source,
-                ExternalId = conversation.ExternalId,
-                Role = assistantMessage.Role.ToString().ToLowerInvariant(),
-                Content = assistantMessage.Content,
-                SenderName = assistantMessage.SenderName,
-                CreatedAt = assistantMessage.CreatedAt
+                MessageId = assistantMessage.Id,
+                Content = finalContent,
+                Usage = finalUsage != null ? new UsageDto
+                {
+                    PromptTokens = finalUsage.PromptTokens,
+                    CompletionTokens = finalUsage.CompletionTokens,
+                    TotalTokens = finalUsage.TotalTokens
+                } : null,
+                FinishReason = finishReason
             });
 
             return Ok(new ChatResponseDto
             {
-                Content = response.Content,
+                Content = finalContent,
                 ConversationId = conversation.Id.ToString(),
-                ToolCalls = response.ToolCalls?.Select(tc => new ToolCallDto
+                FinishReason = finishReason,
+                Usage = finalUsage != null ? new UsageDto
                 {
-                    Id = tc.Id,
-                    Name = tc.Name,
-                    Arguments = tc.Arguments
-                }).ToList(),
-                FinishReason = response.FinishReason,
-                Usage = response.Usage != null ? new UsageDto
-                {
-                    PromptTokens = response.Usage.PromptTokens,
-                    CompletionTokens = response.Usage.CompletionTokens,
-                    TotalTokens = response.Usage.TotalTokens
+                    PromptTokens = finalUsage.PromptTokens,
+                    CompletionTokens = finalUsage.CompletionTokens,
+                    TotalTokens = finalUsage.TotalTokens
                 } : null,
-                MemoryExtractionTriggered = response.MemoryExtractionTriggered,
-                MemoriesInjected = response.MemoriesInjected
+                MemoryExtractionTriggered = false,
+                MemoriesInjected = 0
             });
         }
         catch (Exception ex)
@@ -315,13 +506,13 @@ public class ChatController : ControllerBase
                 } : null
             };
 
-            await foreach (var chunk in _orchestrator.StreamChatAsync(conversationRequest, ct))
+            var sseJsonOptions = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+            await foreach (var delta in _orchestrator.StreamChatAsync(conversationRequest, ct))
             {
-                await Response.WriteAsync($"data: {chunk}\n\n", ct);
+                var json = JsonSerializer.Serialize(delta, sseJsonOptions);
+                await Response.WriteAsync($"data: {json}\n\n", ct);
                 await Response.Body.FlushAsync(ct);
             }
-
-            await Response.WriteAsync("data: [DONE]\n\n", ct);
         }
         catch (OperationCanceledException)
         {
@@ -434,6 +625,22 @@ public class SimpleMessageDto
 {
     public required string Message { get; set; }
     public bool? IncludeMemory { get; set; }
+}
+
+public class AssistantDeltaDto
+{
+    public Guid ConversationId { get; set; }
+    public Guid MessageId { get; set; }
+    public required string Delta { get; set; }
+}
+
+public class AssistantDoneDto
+{
+    public Guid ConversationId { get; set; }
+    public Guid MessageId { get; set; }
+    public required string Content { get; set; }
+    public UsageDto? Usage { get; set; }
+    public string? FinishReason { get; set; }
 }
 
 #endregion

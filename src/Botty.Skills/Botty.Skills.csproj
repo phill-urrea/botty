@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
+    <ProjectReference Include="..\Botty.Channels\Botty.Channels.csproj" />
     <ProjectReference Include="..\Botty.Core\Botty.Core.csproj" />
     <ProjectReference Include="..\Botty.Secrets\Botty.Secrets.csproj" />
   </ItemGroup>
@@ -11,6 +12,7 @@
     <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.2" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.2" />
     <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.2" />
+    <PackageReference Include="Microsoft.Playwright" Version="1.49.0" />
     <PackageReference Include="Npgsql" Version="10.0.1" />
   </ItemGroup>
 

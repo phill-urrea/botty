@@ -26,6 +26,7 @@ public interface IConversationRepository
         string content,
         string? senderName = null,
         string? externalId = null,
+        string? senderId = null,
         CancellationToken ct = default);
 
     /// <summary>
@@ -51,4 +52,9 @@ public interface IConversationRepository
     /// Returns the most recent up to limit messages.
     /// </summary>
     Task<IReadOnlyList<Message>> GetMessagesAsync(Guid conversationId, int limit = 100, CancellationToken ct = default);
+
+    /// <summary>
+    /// Updates the content of an existing message.
+    /// </summary>
+    Task UpdateMessageContentAsync(Guid messageId, string content, CancellationToken ct = default);
 }

@@ -45,6 +45,26 @@ public class KanbanTask
     public TaskPriority Priority { get; set; } = TaskPriority.Normal;
 
     /// <summary>
+    /// Conversation id this task originated from, when applicable.
+    /// </summary>
+    public Guid? ConversationId { get; set; }
+
+    /// <summary>
+    /// User id associated with this task context.
+    /// </summary>
+    public Guid? UserId { get; set; }
+
+    /// <summary>
+    /// Source channel/system for this task context (admin, whatsapp, etc).
+    /// </summary>
+    public string? Source { get; set; }
+
+    /// <summary>
+    /// External channel id/chat id for this task context.
+    /// </summary>
+    public string? ExternalId { get; set; }
+
+    /// <summary>
     /// Pending action to execute upon approval (null if no approval required).
     /// Alias for PendingActionData for EF mapping compatibility.
     /// </summary>

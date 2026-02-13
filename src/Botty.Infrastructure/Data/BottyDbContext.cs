@@ -75,6 +75,10 @@ public class BottyDbContext : DbContext
             entity.Property(e => e.Assignee).HasColumnName("assignee").HasConversion<string>();
             entity.Property(e => e.Type).HasColumnName("task_type").HasConversion<string>();
             entity.Property(e => e.Priority).HasColumnName("priority").HasConversion<string>();
+            entity.Property(e => e.ConversationId).HasColumnName("conversation_id");
+            entity.Property(e => e.UserId).HasColumnName("user_id");
+            entity.Property(e => e.Source).HasColumnName("source");
+            entity.Property(e => e.ExternalId).HasColumnName("external_id");
             entity.Property(e => e.CreatedAt).HasColumnName("created_at");
             entity.Property(e => e.UpdatedAt).HasColumnName("updated_at");
             entity.Property(e => e.ApprovedAt).HasColumnName("approved_at");
@@ -194,6 +198,7 @@ public class BottyDbContext : DbContext
             entity.Property(e => e.ConversationId).HasColumnName("conversation_id");
             entity.Property(e => e.Role).HasColumnName("role").HasConversion<string>();
             entity.Property(e => e.Content).HasColumnName("content");
+            entity.Property(e => e.SenderId).HasColumnName("sender_id");
             entity.Property(e => e.SenderName).HasColumnName("sender_name");
             entity.Property(e => e.ExternalId).HasColumnName("external_id");
             entity.Property(e => e.CreatedAt).HasColumnName("created_at");

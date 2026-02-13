@@ -25,4 +25,16 @@ public class FeedWebSocketBroadcastService : IFeedBroadcastService
     {
         _manager.BroadcastTypingIndicator(indicator);
     }
+
+    /// <inheritdoc />
+    public void BroadcastAssistantDelta(AssistantDeltaDto delta)
+    {
+        _manager.BroadcastAssistantDelta(delta);
+    }
+
+    /// <inheritdoc />
+    public void BroadcastAssistantDone(AssistantDoneDto done)
+    {
+        _manager.BroadcastAssistantDone(done);
+    }
 }

@@ -65,6 +65,10 @@ public class CreateTaskRequest
     public TaskAssignee Assignee { get; set; } = TaskAssignee.User;
     public TaskType Type { get; set; } = TaskType.General;
     public TaskPriority Priority { get; set; } = TaskPriority.Normal;
+    public Guid? ConversationId { get; set; }
+    public Guid? UserId { get; set; }
+    public string? Source { get; set; }
+    public string? ExternalId { get; set; }
     public PendingAction? PendingAction { get; set; }
 }
 
@@ -132,6 +136,11 @@ public class ApprovalRequest
     public string? Description { get; set; }
     public required TaskType Type { get; set; }
     public TaskPriority Priority { get; set; } = TaskPriority.Normal;
+    public TaskAssignee Assignee { get; set; } = TaskAssignee.Assistant;
+    public Guid? ConversationId { get; set; }
+    public Guid? UserId { get; set; }
+    public string? Source { get; set; }
+    public string? ExternalId { get; set; }
 
     /// <summary>
     /// The action to execute when approved.

@@ -207,6 +207,10 @@ public class KanbanController : ControllerBase
         Assignee = task.Assignee.ToString(),
         Type = task.Type.ToString(),
         Priority = task.Priority.ToString(),
+        ConversationId = task.ConversationId,
+        UserId = task.UserId,
+        Source = task.Source,
+        ExternalId = task.ExternalId,
         HasPendingAction = task.PendingActionData != null,
         PendingActionType = task.PendingActionData?.ActionType,
         PendingActionDescription = task.PendingActionData?.Description,
@@ -239,6 +243,10 @@ public class KanbanTaskDto
     public required string Assignee { get; set; }
     public required string Type { get; set; }
     public required string Priority { get; set; }
+    public Guid? ConversationId { get; set; }
+    public Guid? UserId { get; set; }
+    public string? Source { get; set; }
+    public string? ExternalId { get; set; }
     public bool HasPendingAction { get; set; }
     public string? PendingActionType { get; set; }
     public string? PendingActionDescription { get; set; }

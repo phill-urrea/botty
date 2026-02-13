@@ -7,6 +7,8 @@ using Botty.Skills.Registry;
 using Botty.Skills.Repositories;
 using Botty.Skills.Scheduler;
 using Botty.Skills.Services;
+using Botty.Skills.Browser;
+using Botty.Skills.Channels;
 using Botty.Skills.Shell;
 using Botty.Skills.Scripting;
 using Botty.Skills.UrlFetch;
@@ -53,8 +55,11 @@ public static class ServiceExtensions
         services.AddSingleton<BraveSearchSkill>();
         services.AddSingleton<UrlFetchSkill>();
         services.AddSingleton<ScriptSkill>();
+        services.AddSingleton<ChannelMessagingSkill>();
         services.AddSingleton<IbClient>();
         services.AddSingleton<InteractiveBrokersSkill>();
+        services.AddSingleton<BrowserSession>();
+        services.AddSingleton<BrowserSkill>();
 
         // Register skill registry
         services.AddSingleton<SkillRegistry>();
@@ -92,7 +97,9 @@ public static class ServiceExtensions
         var braveSearchSkill = serviceProvider.GetRequiredService<BraveSearchSkill>();
         var urlFetchSkill = serviceProvider.GetRequiredService<UrlFetchSkill>();
         var scriptSkill = serviceProvider.GetRequiredService<ScriptSkill>();
+        var channelMessagingSkill = serviceProvider.GetRequiredService<ChannelMessagingSkill>();
         var interactiveBrokersSkill = serviceProvider.GetRequiredService<InteractiveBrokersSkill>();
+        var browserSkill = serviceProvider.GetRequiredService<BrowserSkill>();
 
         // Register configuration schemas
         configService.RegisterSchema(gmailSkill.ConfigSchema);
@@ -102,7 +109,9 @@ public static class ServiceExtensions
         configService.RegisterSchema(braveSearchSkill.ConfigSchema);
         configService.RegisterSchema(urlFetchSkill.ConfigSchema);
         configService.RegisterSchema(scriptSkill.ConfigSchema);
+        configService.RegisterSchema(channelMessagingSkill.ConfigSchema);
         configService.RegisterSchema(interactiveBrokersSkill.ConfigSchema);
+        configService.RegisterSchema(browserSkill.ConfigSchema);
 
         // Register skills with the registry
         registry.Register(gmailSkill);
@@ -112,7 +121,9 @@ public static class ServiceExtensions
         registry.Register(braveSearchSkill);
         registry.Register(urlFetchSkill);
         registry.Register(scriptSkill);
+        registry.Register(channelMessagingSkill);
         registry.Register(interactiveBrokersSkill);
+        registry.Register(browserSkill);
 
         // Initialize all skills
         await registry.InitializeAllAsync(ct);

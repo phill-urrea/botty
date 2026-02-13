@@ -82,6 +82,11 @@ public class Message
     public required string Content { get; set; }
 
     /// <summary>
+    /// Canonical sender id (phone/chat/user id) for channel-originated messages.
+    /// </summary>
+    public string? SenderId { get; set; }
+
+    /// <summary>
     /// Name of the sender (for third-party messages in WhatsApp, etc.).
     /// </summary>
     public string? SenderName { get; set; }

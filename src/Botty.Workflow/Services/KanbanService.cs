@@ -38,6 +38,10 @@ public class KanbanService : IKanbanService
             Assignee = request.Assignee,
             Type = request.Type,
             Priority = request.Priority,
+            ConversationId = request.ConversationId,
+            UserId = request.UserId,
+            Source = request.Source,
+            ExternalId = request.ExternalId,
             PendingActionData = request.PendingAction
         };
 
@@ -89,7 +93,7 @@ public class KanbanService : IKanbanService
                 NewLane = lane.ToString(),
                 Task = task
             }, ct);
-            if (lane == KanbanLane.Done && previousLane == KanbanLane.NeedsApproval)
+            if (previousLane == KanbanLane.NeedsApproval && lane != KanbanLane.NeedsApproval)
                 await _hookRegistry.PublishEventAsync(HookTrigger.TaskApproved, new { TaskId = taskId, Task = task }, ct);
             if (lane == KanbanLane.Done)
                 await _hookRegistry.PublishEventAsync(HookTrigger.TaskCompleted, new { TaskId = taskId, Task = task }, ct);

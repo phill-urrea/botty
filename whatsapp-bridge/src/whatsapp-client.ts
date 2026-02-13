@@ -188,8 +188,13 @@ export class WhatsAppClient extends EventEmitter {
       logger.warn(`Failed to get quoted message: ${error}`);
     }
 
+    const chatId = message.fromMe ? message.to : message.from;
+    const senderId = isGroup ? (message.author || message.from) : message.from;
+
     return {
       id: message.id._serialized,
+      chatId,
+      senderId,
       from: message.from,
       to: message.to,
       body: message.body,

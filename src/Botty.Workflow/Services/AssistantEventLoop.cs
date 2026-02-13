@@ -1,6 +1,7 @@
 using Botty.Core.Enums;
 using Botty.Core.Interfaces;
 using Botty.Core.Models;
+using Botty.Channels;
 using Botty.Infrastructure.Repositories;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -55,12 +56,14 @@ public class AssistantEventLoop : BackgroundService
 
         // Get tasks assigned to assistant that are ready to work on
         var readyTasks = await repository.GetAssistantReadyTasksAsync(ct);
+        var processedTaskIds = new HashSet<Guid>();
         
         foreach (var task in readyTasks)
         {
             try
             {
                 await ProcessTaskAsync(task, kanbanService, scope.ServiceProvider, ct);
+                processedTaskIds.Add(task.Id);
             }
             catch (Exception ex)
             {
@@ -71,6 +74,11 @@ public class AssistantEventLoop : BackgroundService
                 {
                     ExecutionResult = $"Error: {ex.Message}"
                 }, ct);
+                if (task.PendingActionData != null)
+                {
+                    await kanbanService.MoveTaskAsync(task.Id, KanbanLane.Cancelled, ct);
+                }
+                processedTaskIds.Add(task.Id);
             }
         }
 
@@ -79,6 +87,11 @@ public class AssistantEventLoop : BackgroundService
         
         foreach (var task in approvedTasks)
         {
+            if (processedTaskIds.Contains(task.Id))
+            {
+                continue;
+            }
+
             if (task.PendingActionData != null)
             {
                 try
@@ -122,6 +135,13 @@ public class AssistantEventLoop : BackgroundService
         {
             _logger.LogInformation("Task {Id} requires approval, moving to NeedsApproval", task.Id);
             await kanbanService.MoveTaskAsync(task.Id, KanbanLane.NeedsApproval, ct);
+            return;
+        }
+
+        // Approved tasks with pending action should always execute from pending-action payload.
+        if (task.PendingActionData != null && task.ApprovedAt != null)
+        {
+            await ExecutePendingActionAsync(task, kanbanService, services, ct);
             return;
         }
 
@@ -179,11 +199,15 @@ public class AssistantEventLoop : BackgroundService
         await kanbanService.MoveTaskAsync(task.Id, KanbanLane.InProgress, ct);
 
         // Execute based on the pending action
-        string result = task.PendingActionData.ActionType switch
+        var actionType = task.PendingActionData.ActionType.Trim().ToLowerInvariant();
+        string result = actionType switch
         {
-            "SendMessage" => await ExecuteSendMessageFromActionAsync(task.PendingActionData, services, ct),
-            "ShellCommand" => await ExecuteShellFromActionAsync(task.PendingActionData, services, ct),
-            "SystemChange" => await ExecuteSystemChangeFromActionAsync(task.PendingActionData, services, ct),
+            "sendmessage" => await ExecuteSendMessageFromActionAsync(task.PendingActionData, services, ct),
+            "send_whatsapp" => await ExecuteSendWhatsAppFromActionAsync(task.PendingActionData, services, ct),
+            "sendwhatsapp" => await ExecuteSendWhatsAppFromActionAsync(task.PendingActionData, services, ct),
+            "shellcommand" => await ExecuteShellFromActionAsync(task.PendingActionData, services, ct),
+            "systemchange" => await ExecuteSystemChangeFromActionAsync(task.PendingActionData, services, ct),
+            "executeskilltool" => await ExecuteSkillToolFromActionAsync(task, task.PendingActionData, services, ct),
             _ => $"Executed action: {task.PendingActionData.ActionType}"
         };
 
@@ -250,8 +274,76 @@ public class AssistantEventLoop : BackgroundService
     private Task<string> ExecuteSendMessageFromActionAsync(
         PendingAction action, IServiceProvider services, CancellationToken ct)
     {
-        // Will send message via messaging service
-        return Task.FromResult($"Would send message to {action.Payload?.GetValueOrDefault("recipient", "unknown")}");
+        var payload = action.Payload;
+        var channelId = payload?.GetValueOrDefault("channel_id")
+            ?? payload?.GetValueOrDefault("channelId");
+        var chatId = payload?.GetValueOrDefault("chat_id")
+            ?? payload?.GetValueOrDefault("chatId")
+            ?? payload?.GetValueOrDefault("to");
+        var text = payload?.GetValueOrDefault("message")
+            ?? payload?.GetValueOrDefault("text")
+            ?? payload?.GetValueOrDefault("body");
+        var replyToMessageId = payload?.GetValueOrDefault("reply_to_message_id")
+            ?? payload?.GetValueOrDefault("replyToMessageId");
+
+        if (!string.IsNullOrWhiteSpace(channelId) &&
+            !string.IsNullOrWhiteSpace(chatId) &&
+            !string.IsNullOrWhiteSpace(text))
+        {
+            return ExecuteChannelSendAsync(
+                services,
+                channelId.Trim(),
+                chatId.Trim(),
+                text.Trim(),
+                replyToMessageId,
+                ct);
+        }
+
+        return Task.FromResult($"Message action is missing channel/chat/message payload fields.");
+    }
+
+    private Task<string> ExecuteSendWhatsAppFromActionAsync(
+        PendingAction action, IServiceProvider services, CancellationToken ct)
+    {
+        var payload = action.Payload;
+        var chatId = payload?.GetValueOrDefault("to")
+            ?? payload?.GetValueOrDefault("chat_id")
+            ?? payload?.GetValueOrDefault("chatId");
+        var body = payload?.GetValueOrDefault("body")
+            ?? payload?.GetValueOrDefault("message")
+            ?? payload?.GetValueOrDefault("text");
+        var replyToMessageId = payload?.GetValueOrDefault("replyToMessageId")
+            ?? payload?.GetValueOrDefault("reply_to_message_id");
+
+        if (string.IsNullOrWhiteSpace(chatId) || string.IsNullOrWhiteSpace(body))
+            return Task.FromResult("WhatsApp action is missing destination or body payload fields.");
+
+        return ExecuteChannelSendAsync(
+            services,
+            "whatsapp",
+            chatId.Trim(),
+            body.Trim(),
+            replyToMessageId,
+            ct);
+    }
+
+    private async Task<string> ExecuteChannelSendAsync(
+        IServiceProvider services,
+        string channelId,
+        string chatId,
+        string text,
+        string? replyToMessageId,
+        CancellationToken ct)
+    {
+        var registry = services.GetRequiredService<IChannelRegistry>();
+        var sendResult = await registry.SendToChannelAsync(
+            channelId,
+            new OutboundMessage(chatId, text, replyToMessageId),
+            ct);
+        if (!sendResult.Success)
+            throw new InvalidOperationException(sendResult.Error ?? $"Failed to send message via '{channelId}'.");
+
+        return $"Message sent via {channelId} to {chatId}. MessageId={sendResult.MessageId ?? "n/a"}";
     }
 
     private Task<string> ExecuteShellFromActionAsync(
@@ -266,5 +358,52 @@ public class AssistantEventLoop : BackgroundService
     {
         // Will apply system change
         return Task.FromResult($"Applied system change: {action.Description ?? "No description"}");
+    }
+
+    private async Task<string> ExecuteSkillToolFromActionAsync(
+        KanbanTask task,
+        PendingAction action,
+        IServiceProvider services,
+        CancellationToken ct)
+    {
+        var payload = action.Payload;
+        if (payload == null ||
+            !payload.TryGetValue("toolName", out var toolName) ||
+            string.IsNullOrWhiteSpace(toolName))
+        {
+            throw new InvalidOperationException("Approved tool action missing payload.toolName");
+        }
+
+        var arguments = payload.TryGetValue("arguments", out var args) && !string.IsNullOrWhiteSpace(args)
+            ? args
+            : "{}";
+
+        Guid? contextConversationId = task.ConversationId ?? ParseGuid(payload, "conversationId");
+        Guid? contextTaskId = task.Id;
+        Guid? contextUserId = task.UserId ?? ParseGuid(payload, "userId");
+
+        var skillRegistry = services.GetRequiredService<ISkillRegistry>();
+        var result = await skillRegistry.ExecuteToolAsync(
+            toolName,
+            arguments,
+            contextConversationId,
+            contextTaskId,
+            contextUserId,
+            ct);
+        if (!result.Success)
+        {
+            throw new InvalidOperationException($"Tool execution failed: {result.Error ?? "unknown error"}");
+        }
+
+        return string.IsNullOrWhiteSpace(result.Result)
+            ? $"Executed approved tool call: {toolName}"
+            : result.Result!;
+    }
+
+    private static Guid? ParseGuid(Dictionary<string, string> payload, string key)
+    {
+        if (payload.TryGetValue(key, out var value) && Guid.TryParse(value, out var parsed))
+            return parsed;
+        return null;
     }
 }

@@ -67,6 +67,11 @@ public class SkillContext
     /// The task this skill execution is for (if any).
     /// </summary>
     public Guid? TaskId { get; set; }
+
+    /// <summary>
+    /// User id associated with the current execution context.
+    /// </summary>
+    public Guid? UserId { get; set; }
 }
 
 /// <summary>
@@ -129,4 +134,15 @@ public interface ISkillRegistry
     /// Executes a tool by name with the given arguments (used by hooks and assistants).
     /// </summary>
     Task<SkillResult> ExecuteToolAsync(string toolName, string arguments, CancellationToken ct = default);
+
+    /// <summary>
+    /// Executes a tool by name with explicit context metadata.
+    /// </summary>
+    Task<SkillResult> ExecuteToolAsync(
+        string toolName,
+        string arguments,
+        Guid? conversationId,
+        Guid? taskId,
+        Guid? userId,
+        CancellationToken ct = default);
 }

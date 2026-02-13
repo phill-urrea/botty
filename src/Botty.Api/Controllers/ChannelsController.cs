@@ -317,7 +317,13 @@ public class ChannelsController : ControllerBase
         {
             var conversation = await _conversationRepository.GetOrCreateAsync(id, request.ChatId, Guid.Empty, null, ct);
             var message = await _conversationRepository.AppendMessageAsync(
-                conversation.Id, MessageRole.Assistant, request.Text, null, result.MessageId, ct);
+                conversation.Id,
+                MessageRole.Assistant,
+                request.Text,
+                senderName: null,
+                externalId: result.MessageId,
+                senderId: null,
+                ct: ct);
             _feedBroadcast.BroadcastNewMessage(new FeedMessageDto
             {
                 Id = message.Id,
@@ -326,6 +332,7 @@ public class ChannelsController : ControllerBase
                 ExternalId = conversation.ExternalId,
                 Role = message.Role.ToString().ToLowerInvariant(),
                 Content = message.Content,
+                SenderId = message.SenderId,
                 SenderName = message.SenderName,
                 CreatedAt = message.CreatedAt
             });

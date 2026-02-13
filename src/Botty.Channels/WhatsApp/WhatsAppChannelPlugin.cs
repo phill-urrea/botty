@@ -120,22 +120,16 @@ public class WhatsAppChannelPlugin : BaseChannelPlugin
 
             // Retry status check — the bridge may still be authenticating on startup
             WhatsAppBridgeStatus? status = null;
-            for (var attempt = 0; attempt < 10; attempt++)
+            for (var attempt = 0; attempt < 20; attempt++)
             {
                 status = await GetBridgeStatusAsync(ct);
                 if (status.IsConnected) break;
-                Logger.LogDebug("WhatsApp bridge not ready (attempt {Attempt}/10), retrying in 3s…", attempt + 1);
+                Logger.LogDebug("WhatsApp bridge not ready (attempt {Attempt}/20), retrying in 3s…", attempt + 1);
                 await Task.Delay(3000, ct);
             }
 
-            if (status is not { IsConnected: true })
-            {
-                throw new InvalidOperationException(
-                    "WhatsApp bridge is not connected. Please scan the QR code to connect.");
-            }
-
-            _accountId = status.PhoneNumber;
-            _accountName = status.AccountName;
+            _accountId = status?.PhoneNumber;
+            _accountName = status?.AccountName;
 
             if (_options.HealthCheckIntervalSeconds > 0)
             {
@@ -146,10 +140,35 @@ public class WhatsAppChannelPlugin : BaseChannelPlugin
                     TimeSpan.FromSeconds(_options.HealthCheckIntervalSeconds));
             }
 
-            Logger.LogInformation(
-                "WhatsApp channel initialized. Connected as {AccountName} ({PhoneNumber})",
-                _accountName, _accountId);
+            if (status is { IsConnected: true })
+            {
+                Logger.LogInformation(
+                    "WhatsApp channel initialized. Connected as {AccountName} ({PhoneNumber})",
+                    _accountName, _accountId);
+            }
+            else
+            {
+                Logger.LogWarning(
+                    "WhatsApp bridge was not connected during startup. Channel initialized in standby mode and will reconnect when bridge becomes available.");
+            }
         }
+    }
+
+    public override async Task<ChannelStatus> GetStatusAsync(CancellationToken ct = default)
+    {
+        // For single-account mode, compute status from live bridge state to avoid startup race false positives.
+        if (_options.Accounts.Count == 0 && _httpClient != null)
+        {
+            var status = await GetBridgeStatusAsync(ct);
+            return new ChannelStatus(
+                IsConnected: status.IsConnected,
+                AccountId: status.PhoneNumber,
+                AccountName: status.AccountName,
+                ConnectedSince: status.IsConnected ? ConnectedSince : null,
+                Error: status.IsConnected ? null : (status.Error ?? "WhatsApp bridge is not connected"));
+        }
+
+        return await base.GetStatusAsync(ct);
     }
 
     private async Task InitializeAccountAsync(string accountId, WhatsAppAccountOptions opts, CancellationToken ct)
@@ -411,10 +430,12 @@ public class WhatsAppChannelPlugin : BaseChannelPlugin
     /// </summary>
     public async Task HandleIncomingMessageAsync(WhatsAppIncomingMessage message, CancellationToken ct = default)
     {
+        var chatId = string.IsNullOrWhiteSpace(message.ConversationId) ? message.From : message.ConversationId;
+
         var incomingMessage = new IncomingMessage
         {
             MessageId = message.MessageId,
-            ChatId = message.From,
+            ChatId = chatId,
             SenderId = message.From,
             SenderName = message.FromName,
             Text = message.Body,
@@ -446,7 +467,7 @@ public class WhatsAppChannelPlugin : BaseChannelPlugin
                 if (code != null)
                 {
                     await SendTextAsync(new OutboundMessage(
-                        message.From,
+                        chatId,
                         $"Hi! I don't recognize you yet. To pair with me, ask my owner to approve code: *{code}*\n\nThis code expires in 1 hour."),
                         ct);
                 }
@@ -458,12 +479,12 @@ public class WhatsAppChannelPlugin : BaseChannelPlugin
         }
 
         // Send typing indicator immediately so the user sees feedback while the message routes
-        _ = SendTypingIndicatorAsync(message.From, ct);
+        _ = SendTypingIndicatorAsync(chatId, ct);
 
         // Apply mention gating for groups
         if (message.IsGroup)
         {
-            var groupConfig = _options.Security.Groups.GetValueOrDefault(message.From);
+            var groupConfig = _options.Security.Groups.GetValueOrDefault(chatId);
             var requireMention = groupConfig?.RequireMention ?? false;
 
             if (requireMention)

@@ -67,10 +67,10 @@ export class BottyApiClient {
   async sendFeedIncoming(message: WhatsAppMessage): Promise<void> {
     const payload = {
       channelId: 'whatsapp',
-      chatId: message.from,
+      chatId: message.chatId,
       messageId: message.id,
-      senderId: message.from,
-      senderName: message.senderName || message.from.split('@')[0],
+      senderId: message.senderId,
+      senderName: message.senderName || message.senderId.split('@')[0],
       text: message.body,
       timestamp: new Date(message.timestamp * 1000).toISOString(),
     };
@@ -90,13 +90,13 @@ export class BottyApiClient {
   async sendChannelWebhook(message: WhatsAppMessage): Promise<void> {
     const payload = {
       messageId: message.id,
-      from: message.from,
-      fromName: message.senderName || message.from.split('@')[0],
+      from: message.senderId,
+      fromName: message.senderName || message.senderId.split('@')[0],
       body: message.body,
       timestamp: new Date(message.timestamp * 1000).toISOString(),
       isGroup: message.isGroup,
       groupName: message.groupName,
-      conversationId: message.from,
+      conversationId: message.chatId,
     };
 
     try {

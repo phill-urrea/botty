@@ -8,6 +8,8 @@ export type ConnectionState = 'disconnected' | 'connecting' | 'qr_pending' | 'au
  */
 export interface WhatsAppMessage {
   id: string;
+  chatId: string;
+  senderId: string;
   from: string;
   to: string;
   body: string;

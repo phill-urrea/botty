@@ -72,12 +72,12 @@ public class ClaudeProvider : ILlmProvider
         }
     }
 
-    public async IAsyncEnumerable<string> StreamCompleteAsync(
+    public async IAsyncEnumerable<StreamDelta> StreamCompleteAsync(
         LlmRequest request,
         [EnumeratorCancellation] CancellationToken ct = default)
     {
         var model = request.Parameters.Model ?? _options.DefaultModel;
-        
+
         _logger.LogDebug("Starting streaming request to Claude ({Model})", model);
 
         var messages = BuildMessages(request);
@@ -97,28 +97,86 @@ public class ClaudeProvider : ILlmProvider
             messageRequest.Tools = tools.Select(MapToAnthropicTool).ToList();
         }
 
+        // Track current tool call being accumulated across content_block_delta events
+        string? currentToolId = null;
+        string? currentToolName = null;
+        var toolInputJson = new StringBuilder();
+        string? finishReason = null;
+        TokenUsage? usage = null;
+
         await foreach (var streamEvent in _client.Messages.StreamClaudeMessageAsync(messageRequest, ct))
         {
-            // Extract text from stream events
-            // The SDK emits different event types - we need to extract text content
-            var textProperty = streamEvent.GetType().GetProperty("Delta");
-            if (textProperty != null)
+            // content_block_start: signals beginning of a text or tool_use block
+            if (streamEvent.Type == "content_block_start" && streamEvent.ContentBlock != null)
             {
-                var deltaObj = textProperty.GetValue(streamEvent);
-                if (deltaObj != null)
+                var block = streamEvent.ContentBlock;
+                if (block.Type == "tool_use")
                 {
-                    var textProp = deltaObj.GetType().GetProperty("Text");
-                    if (textProp != null)
-                    {
-                        var text = textProp.GetValue(deltaObj) as string;
-                        if (!string.IsNullOrEmpty(text))
-                        {
-                            yield return text;
-                        }
-                    }
+                    currentToolId = block.Id;
+                    currentToolName = block.Name;
+                    toolInputJson.Clear();
                 }
             }
+            // content_block_delta: carries text or partial tool JSON
+            else if (streamEvent.Type == "content_block_delta" && streamEvent.Delta != null)
+            {
+                var delta = streamEvent.Delta;
+                if (!string.IsNullOrEmpty(delta.Text))
+                {
+                    yield return new StreamDelta { Type = "text", Text = delta.Text };
+                }
+                if (!string.IsNullOrEmpty(delta.PartialJson))
+                {
+                    toolInputJson.Append(delta.PartialJson);
+                }
+            }
+            // content_block_stop: if we were accumulating a tool call, emit it
+            else if (streamEvent.Type == "content_block_stop")
+            {
+                if (currentToolId != null && currentToolName != null)
+                {
+                    yield return new StreamDelta
+                    {
+                        Type = "tool_use",
+                        ToolCall = new LlmToolCall
+                        {
+                            Id = currentToolId,
+                            Name = currentToolName,
+                            Arguments = toolInputJson.ToString()
+                        }
+                    };
+                    currentToolId = null;
+                    currentToolName = null;
+                    toolInputJson.Clear();
+                }
+            }
+            // message_delta: carries stop reason and usage
+            else if (streamEvent.Type == "message_delta" && streamEvent.Delta != null)
+            {
+                finishReason = streamEvent.Delta.StopReason;
+                if (streamEvent.Delta.Usage != null)
+                {
+                    usage = new TokenUsage
+                    {
+                        CompletionTokens = streamEvent.Delta.Usage.OutputTokens
+                    };
+                }
+            }
+            // message_start: capture input token usage
+            else if (streamEvent.Type == "message_start" && streamEvent.StreamStartMessage?.Usage != null)
+            {
+                usage ??= new TokenUsage();
+                usage.PromptTokens = streamEvent.StreamStartMessage.Usage.InputTokens;
+            }
         }
+
+        // Emit final done delta
+        yield return new StreamDelta
+        {
+            Type = "done",
+            FinishReason = finishReason,
+            Usage = usage
+        };
     }
 
     public Task<float[]> GetEmbeddingAsync(string text, CancellationToken ct = default)

@@ -111,6 +111,10 @@ public class OAuthController : ControllerBase
                 ct);
 
             _logger.LogInformation("Linked account {Email} via provider {Provider}", linked.Email, provider);
+            if (providerType.Value == OAuthProviderType.Google)
+            {
+                await ReinitializeGoogleSkillsAsync(ct);
+            }
 
             if (!string.IsNullOrWhiteSpace(stateData.ReturnUrl))
             {
@@ -212,18 +216,31 @@ public class OAuthController : ControllerBase
 
     private async Task SyncGoogleClientCredentialsIntoSkillsAsync(string clientId, string clientSecret, CancellationToken ct)
     {
-        var targetSkills = new[] { "gmail", "google-calendar" };
+        var targetSkills = GetGoogleSkillIds();
         foreach (var skillId in targetSkills)
         {
             await _skillConfigService.SetConfigValueAsync(skillId, "client_id", clientId, ct);
             await _skillConfigService.SetConfigValueAsync(skillId, "client_secret", clientSecret, ct);
+        }
 
+        await ReinitializeGoogleSkillsAsync(ct);
+    }
+
+    private async Task ReinitializeGoogleSkillsAsync(CancellationToken ct)
+    {
+        foreach (var skillId in GetGoogleSkillIds())
+        {
             var skill = _skillRegistry.Get(skillId);
             if (skill == null)
                 continue;
             var config = await _skillConfigService.GetConfigAsync(skillId, ct);
             await skill.InitializeAsync(config, ct);
         }
+    }
+
+    private static string[] GetGoogleSkillIds()
+    {
+        return ["gmail", "google-calendar"];
     }
 
     private static OAuthProviderType? ParseProvider(string provider) => provider.Trim().ToLowerInvariant() switch

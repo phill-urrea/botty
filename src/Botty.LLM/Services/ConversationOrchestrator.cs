@@ -20,9 +20,9 @@ public interface IConversationOrchestrator
         CancellationToken ct = default);
 
     /// <summary>
-    /// Streams a response for a message.
+    /// Streams a response for a message as structured deltas.
     /// </summary>
-    IAsyncEnumerable<string> StreamChatAsync(
+    IAsyncEnumerable<StreamDelta> StreamChatAsync(
         ConversationRequest request,
         CancellationToken ct = default);
 
@@ -288,7 +288,7 @@ public class ConversationOrchestrator : IConversationOrchestrator
         };
     }
 
-    public async IAsyncEnumerable<string> StreamChatAsync(
+    public async IAsyncEnumerable<StreamDelta> StreamChatAsync(
         ConversationRequest request,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
     {
@@ -352,21 +352,21 @@ public class ConversationOrchestrator : IConversationOrchestrator
         };
 
         // Stream response
-        await foreach (var chunk in _llmProvider.StreamCompleteAsync(llmRequest, ct))
+        await foreach (var delta in _llmProvider.StreamCompleteAsync(llmRequest, ct))
         {
-            yield return chunk;
+            yield return delta;
         }
 
         // Trigger memory extraction if applicable
-        if (request.ExtractMemories && 
+        if (request.ExtractMemories &&
             _memoryIngestionService != null &&
             userId != Guid.Empty &&
             request.Messages.Count >= _options.MemoryExtractionMinTurns * 2)
         {
             _ = ProcessConversationForMemoryAsync(
-                request.Messages, 
-                userId, 
-                request.ConversationId, 
+                request.Messages,
+                userId,
+                request.ConversationId,
                 CancellationToken.None);
         }
     }

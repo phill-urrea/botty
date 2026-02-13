@@ -1,8 +1,10 @@
 using System.Text.Json;
 using Botty.Api.Controllers;
 using Botty.Channels;
+using Botty.Core.Enums;
 using Botty.Core.Interfaces;
 using Botty.Core.Models;
+using Botty.Core.Services;
 using Botty.LLM.Services;
 
 namespace Botty.Api.Services;
@@ -92,6 +94,7 @@ public class ChannelAutoReplyService : BackgroundService
         var orchestrator = scope.ServiceProvider.GetRequiredService<IConversationOrchestrator>();
         var conversationRepo = scope.ServiceProvider.GetRequiredService<IConversationRepository>();
         var skillRegistry = scope.ServiceProvider.GetRequiredService<ISkillRegistry>();
+        var approvalService = scope.ServiceProvider.GetRequiredService<IApprovalService>();
 
         // Determine self-chat ID for WhatsApp (used to provide cross-conversation tools)
         string? selfChatId = null;
@@ -159,7 +162,17 @@ public class ChannelAutoReplyService : BackgroundService
         ConversationResponse response;
         try
         {
-            response = await RunToolLoopAsync(orchestrator, skillRegistry, conversationRepo, selfChatId, request, conversation.Id, conversation.Source);
+            response = await RunToolLoopAsync(
+                orchestrator,
+                skillRegistry,
+                conversationRepo,
+                approvalService,
+                selfChatId,
+                request,
+                conversation.Id,
+                conversation.UserId,
+                conversation.Source,
+                conversation.ExternalId);
         }
         finally
         {
@@ -174,7 +187,12 @@ public class ChannelAutoReplyService : BackgroundService
 
         // Persist assistant response and broadcast to feed
         var assistantMessage = await conversationRepo.AppendMessageAsync(
-            conversation.Id, MessageRole.Assistant, response.Content);
+            conversation.Id,
+            MessageRole.Assistant,
+            response.Content,
+            senderName: null,
+            externalId: null,
+            senderId: null);
         _feedBroadcast.BroadcastNewMessage(new FeedMessageDto
         {
             Id = assistantMessage.Id,
@@ -183,6 +201,7 @@ public class ChannelAutoReplyService : BackgroundService
             ExternalId = conversation.ExternalId,
             Role = "assistant",
             Content = assistantMessage.Content,
+            SenderId = assistantMessage.SenderId,
             SenderName = assistantMessage.SenderName,
             CreatedAt = assistantMessage.CreatedAt
         });
@@ -245,21 +264,6 @@ public class ChannelAutoReplyService : BackgroundService
             }
             """
         },
-        new LlmTool
-        {
-            Name = "send_whatsapp_message",
-            Description = "Send a WhatsApp message to a specific chat. IMPORTANT: Always draft the message first and show it to the user for explicit approval before calling this tool.",
-            ParametersSchema = """
-            {
-                "type": "object",
-                "properties": {
-                    "chat_id": { "type": "string", "description": "The WhatsApp chat ID to send to (e.g. '1234567890@c.us' for DMs or '123456789-987654@g.us' for groups)" },
-                    "message": { "type": "string", "description": "The message text to send" }
-                },
-                "required": ["chat_id", "message"]
-            }
-            """
-        }
     ];
 
     // ── Custom tool execution ─────────────────────────────────────────────
@@ -271,7 +275,6 @@ public class ChannelAutoReplyService : BackgroundService
         {
             "get_recent_messages" => await ExecuteGetRecentMessages(arguments, conversationRepo, selfChatId),
             "list_conversations" => await ExecuteListConversations(conversationRepo, selfChatId),
-            "send_whatsapp_message" => await ExecuteSendWhatsAppMessage(arguments),
             _ => null
         };
     }
@@ -343,30 +346,19 @@ public class ChannelAutoReplyService : BackgroundService
         return SkillResult.Ok(JsonSerializer.Serialize(new { count = results.Count(), conversations = results }, JsonOptions));
     }
 
-    private async Task<SkillResult> ExecuteSendWhatsAppMessage(string arguments)
-    {
-        var args = JsonSerializer.Deserialize<SendWhatsAppMessageArgs>(arguments, JsonOptions);
-        if (args is null || string.IsNullOrWhiteSpace(args.ChatId) || string.IsNullOrWhiteSpace(args.Message))
-            return SkillResult.Fail("Missing required parameters: 'chat_id' and 'message' are required.");
-
-        var outbound = new OutboundMessage(ChatId: args.ChatId, Text: args.Message);
-        var result = await _registry.SendToChannelAsync("whatsapp", outbound);
-
-        return result.Success
-            ? SkillResult.Ok(JsonSerializer.Serialize(new { status = "sent", chat_id = args.ChatId }, JsonOptions))
-            : SkillResult.Fail($"Failed to send message: {result.Error}");
-    }
-
     // ── Tool loop ─────────────────────────────────────────────────────────
 
     private async Task<ConversationResponse> RunToolLoopAsync(
         IConversationOrchestrator orchestrator,
         ISkillRegistry skillRegistry,
         IConversationRepository conversationRepo,
+        IApprovalService approvalService,
         string? selfChatId,
         ConversationRequest request,
         Guid conversationId,
-        string source)
+        Guid userId,
+        string source,
+        string? externalId)
     {
         var response = await orchestrator.ChatAsync(request);
         var iterations = 0;
@@ -386,6 +378,31 @@ public class ChannelAutoReplyService : BackgroundService
             var toolResults = new List<LlmToolResult>();
             foreach (var tc in toolCalls)
             {
+                if (ToolApprovalPolicy.TryGetApprovalTaskType(tc.Name, out var taskType))
+                {
+                    var approvalTask = await CreateApprovalTaskForToolCallAsync(
+                        tc,
+                        taskType,
+                        conversationId,
+                        userId,
+                        source,
+                        externalId,
+                        approvalService,
+                        CancellationToken.None);
+                    toolResults.Add(new LlmToolResult
+                    {
+                        ToolUseId = tc.Id,
+                        Content = JsonSerializer.Serialize(new
+                        {
+                            status = "pending_approval",
+                            taskId = approvalTask.Id,
+                            toolName = tc.Name,
+                            message = $"Execution of tool '{tc.Name}' is pending explicit approval."
+                        }, JsonOptions)
+                    });
+                    continue;
+                }
+
                 // Try custom self-chat tools first, then fall back to skill registry
                 var skillResult = await TryExecuteCustomToolAsync(tc.Name, tc.Arguments ?? "{}", conversationRepo, selfChatId)
                     ?? await skillRegistry.ExecuteToolAsync(tc.Name, tc.Arguments ?? "{}");
@@ -418,6 +435,55 @@ public class ChannelAutoReplyService : BackgroundService
         return response;
     }
 
+    private async Task<KanbanTask> CreateApprovalTaskForToolCallAsync(
+        LlmToolCall toolCall,
+        TaskType taskType,
+        Guid conversationId,
+        Guid userId,
+        string source,
+        string? externalId,
+        IApprovalService approvalService,
+        CancellationToken ct)
+    {
+        var preview = $"{toolCall.Name}({toolCall.Arguments ?? "{}"})";
+        if (preview.Length > 500)
+        {
+            preview = preview[..500] + "...";
+        }
+
+        var request = new ApprovalRequest
+        {
+            Title = $"Approve tool call: {toolCall.Name}",
+            Description = "The assistant requested to execute a side-effecting tool call.",
+            Type = taskType,
+            Priority = TaskPriority.Normal,
+            Action = new PendingAction
+            {
+                ActionType = "ExecuteSkillTool",
+                Description = $"Execute tool '{toolCall.Name}' after approval.",
+                Payload = new Dictionary<string, string>
+                {
+                    ["toolName"] = toolCall.Name,
+                    ["arguments"] = toolCall.Arguments ?? "{}",
+                    ["conversationId"] = conversationId.ToString(),
+                    ["userId"] = userId.ToString(),
+                    ["source"] = source
+                },
+                Preview = preview,
+                RequiresApproval = true
+            },
+            Assignee = TaskAssignee.Assistant,
+            ConversationId = conversationId,
+            UserId = userId,
+            Source = source,
+            ExternalId = externalId
+        };
+        if (!string.IsNullOrWhiteSpace(externalId))
+            request.Action.Payload!["externalId"] = externalId;
+
+        return await approvalService.RequestApprovalAsync(request, ct);
+    }
+
     // ── Argument DTOs ─────────────────────────────────────────────────────
 
     private sealed class GetRecentMessagesArgs
@@ -427,9 +493,4 @@ public class ChannelAutoReplyService : BackgroundService
         public int Limit { get; set; } = 100;
     }
 
-    private sealed class SendWhatsAppMessageArgs
-    {
-        public string? ChatId { get; set; }
-        public string? Message { get; set; }
-    }
 }

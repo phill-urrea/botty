@@ -50,6 +50,7 @@ public class FeedController : ControllerBase
             ExternalId = m.Conversation?.ExternalId,
             Role = m.Role.ToString().ToLowerInvariant(),
             Content = m.Content,
+            SenderId = m.SenderId,
             SenderName = m.SenderName,
             CreatedAt = m.CreatedAt
         }).ToList();
@@ -87,7 +88,8 @@ public class FeedController : ControllerBase
             request.Text ?? string.Empty,
             senderName: request.SenderName,
             externalId: request.MessageId,
-            ct);
+            senderId: request.SenderId,
+            ct: ct);
 
         _logger.LogInformation(
             "Feed incoming: channel={ChannelId} chatId={ChatId} from={Sender}",
@@ -101,6 +103,7 @@ public class FeedController : ControllerBase
             ExternalId = conversation.ExternalId,
             Role = message.Role.ToString().ToLowerInvariant(),
             Content = message.Content,
+            SenderId = message.SenderId,
             SenderName = message.SenderName,
             CreatedAt = message.CreatedAt
         };
@@ -126,6 +129,7 @@ public class FeedMessageDto
     public string? ExternalId { get; set; }
     public required string Role { get; set; }
     public required string Content { get; set; }
+    public string? SenderId { get; set; }
     public string? SenderName { get; set; }
     public DateTime CreatedAt { get; set; }
 }

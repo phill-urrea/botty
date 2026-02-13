@@ -26,6 +26,10 @@ export interface KanbanTask {
   lane: string;
   assignee: string;
   priority: string;
+  conversationId?: string;
+  userId?: string;
+  source?: string;
+  externalId?: string;
   pendingAction?: PendingAction;
   createdAt: string;
   updatedAt: string;
@@ -49,24 +53,41 @@ export interface CreateTaskRequest {
 
 // Kanban API
 export const kanbanApi = {
-  getTasks: () => fetchApi<{ tasks: KanbanTask[] }>('/kanban/tasks'),
-  getTask: (id: string) => fetchApi<KanbanTask>(`/kanban/tasks/${id}`),
+  getTasks: async (): Promise<{ tasks: KanbanTask[] }> => {
+    const board = await fetchApi<{
+      toDo: KanbanTask[];
+      inProgress: KanbanTask[];
+      needsApproval: KanbanTask[];
+      done: KanbanTask[];
+      cancelled: KanbanTask[];
+    }>('/kanban/board');
+    return {
+      tasks: [
+        ...(board.toDo ?? []),
+        ...(board.inProgress ?? []),
+        ...(board.needsApproval ?? []),
+        ...(board.done ?? []),
+        ...(board.cancelled ?? []),
+      ],
+    };
+  },
+  getTask: (id: string) => fetchApi<KanbanTask>(`/kanban/${id}`),
   createTask: (task: CreateTaskRequest) => 
-    fetchApi<KanbanTask>('/kanban/tasks', { method: 'POST', body: JSON.stringify(task) }),
+    fetchApi<KanbanTask>('/kanban', { method: 'POST', body: JSON.stringify(task) }),
   moveTask: (id: string, lane: string) =>
-    fetchApi<KanbanTask>(`/kanban/tasks/${id}/move`, { 
-      method: 'PUT', 
+    fetchApi<KanbanTask>(`/kanban/${id}/move`, { 
+      method: 'POST', 
       body: JSON.stringify({ lane }) 
     }),
   approveTask: (id: string) =>
-    fetchApi<KanbanTask>(`/kanban/tasks/${id}/approve`, { method: 'POST' }),
+    fetchApi<KanbanTask>(`/kanban/${id}/approve`, { method: 'POST' }),
   rejectTask: (id: string, reason?: string) =>
-    fetchApi<KanbanTask>(`/kanban/tasks/${id}/reject`, { 
+    fetchApi<KanbanTask>(`/kanban/${id}/reject`, { 
       method: 'POST',
       body: JSON.stringify({ reason })
     }),
   deleteTask: (id: string) =>
-    fetchApi<void>(`/kanban/tasks/${id}`, { method: 'DELETE' }),
+    fetchApi<void>(`/kanban/${id}`, { method: 'DELETE' }),
 };
 
 // Soul Types (UI shape)
@@ -484,6 +505,7 @@ export interface FeedMessage {
   externalId: string | null;
   role: string;
   content: string;
+  senderId: string | null;
   senderName: string | null;
   createdAt: string;
 }
@@ -530,6 +552,23 @@ export const chatApi = {
       body: JSON.stringify(request),
     }),
 };
+
+// Streaming WebSocket event types
+export interface AssistantDeltaEvent {
+  type: 'assistant_delta';
+  conversationId: string;
+  messageId: string;
+  delta: string;
+}
+
+export interface AssistantDoneEvent {
+  type: 'assistant_done';
+  conversationId: string;
+  messageId: string;
+  content: string;
+  usage?: { promptTokens: number; completionTokens: number; totalTokens: number };
+  finishReason?: string;
+}
 
 /** WebSocket URL for feed (new_message events). Derives from API base. */
 export function getFeedWebSocketUrl(): string {

@@ -60,6 +60,7 @@ public class ConversationRepository : IConversationRepository
         string content,
         string? senderName = null,
         string? externalId = null,
+        string? senderId = null,
         CancellationToken ct = default)
     {
         var message = new Message
@@ -68,6 +69,7 @@ public class ConversationRepository : IConversationRepository
             ConversationId = conversationId,
             Role = role,
             Content = content ?? string.Empty,
+            SenderId = senderId,
             SenderName = senderName,
             ExternalId = externalId,
             CreatedAt = DateTime.UtcNow
@@ -106,10 +108,13 @@ public class ConversationRepository : IConversationRepository
             query = query.Where(m => m.CreatedAt > since.Value);
         }
 
-        return await query
-            .OrderBy(m => m.CreatedAt)
+        var newestFirst = await query
+            .OrderByDescending(m => m.CreatedAt)
             .Take(limit)
             .ToListAsync(ct);
+
+        newestFirst.Reverse();
+        return newestFirst;
     }
 
     /// <inheritdoc />
@@ -129,5 +134,15 @@ public class ConversationRepository : IConversationRepository
             .ToListAsync(ct);
         messages.Reverse();
         return messages;
+    }
+
+    /// <inheritdoc />
+    public async Task UpdateMessageContentAsync(Guid messageId, string content, CancellationToken ct = default)
+    {
+        await _context.Messages
+            .Where(m => m.Id == messageId)
+            .ExecuteUpdateAsync(
+                s => s.SetProperty(m => m.Content, content),
+                ct);
     }
 }

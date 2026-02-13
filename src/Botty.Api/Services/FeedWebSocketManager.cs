@@ -98,6 +98,40 @@ public class FeedWebSocketManager
         }
     }
 
+    /// <summary>
+    /// Broadcasts an assistant text delta to all connected clients.
+    /// </summary>
+    public void BroadcastAssistantDelta(AssistantDeltaDto delta)
+    {
+        var payload = JsonSerializer.Serialize(new { type = "assistant_delta", delta.ConversationId, delta.MessageId, delta.Delta }, JsonOptions);
+        var bytes = Encoding.UTF8.GetBytes(payload);
+
+        foreach (var kv in _sockets.ToArray())
+        {
+            if (kv.Value.State == WebSocketState.Open)
+            {
+                _ = SendAsync(kv.Value, bytes);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Broadcasts that an assistant message stream has completed.
+    /// </summary>
+    public void BroadcastAssistantDone(AssistantDoneDto done)
+    {
+        var payload = JsonSerializer.Serialize(new { type = "assistant_done", done.ConversationId, done.MessageId, done.Content, done.Usage, done.FinishReason }, JsonOptions);
+        var bytes = Encoding.UTF8.GetBytes(payload);
+
+        foreach (var kv in _sockets.ToArray())
+        {
+            if (kv.Value.State == WebSocketState.Open)
+            {
+                _ = SendAsync(kv.Value, bytes);
+            }
+        }
+    }
+
     private async Task SendAsync(WebSocket webSocket, byte[] bytes)
     {
         try

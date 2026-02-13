@@ -18,4 +18,16 @@ public class NoOpFeedBroadcastService : IFeedBroadcastService
     {
         // No-op
     }
+
+    /// <inheritdoc />
+    public void BroadcastAssistantDelta(AssistantDeltaDto delta)
+    {
+        // No-op
+    }
+
+    /// <inheritdoc />
+    public void BroadcastAssistantDone(AssistantDoneDto done)
+    {
+        // No-op
+    }
 }

@@ -24,6 +24,7 @@ services:
       context: ..
       dockerfile: docker/Dockerfile.api
     container_name: botty-api
+    shm_size: '1gb'
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
       - ConnectionStrings__DefaultConnection=Host=postgres;Database=botty;Username=botty;Password=botty_dev_password
@@ -33,7 +34,8 @@ services:
       - BOTTY_SECRET_OAUTH_PROVIDERS_GOOGLE_CLIENT_SECRET=your_google_client_secret
       - BOTTY_SECRET_OAUTH_PROVIDERS_GOOGLE_REDIRECT_URI=http://localhost:5001/api/oauth/providers/google/callback
       - BOTTY_SECRET_OAUTH_PROVIDERS_GOOGLE_SCOPES=openid email profile https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/calendar.events
-      - BOTTY_SECRET_SKILLS_BRAVE_SEARCH_API_KEY=your_brave_search_api_key
+      - BOTTY_SECRET_SKILLS_BRAVE_SEARCH_API_KEY=BSADBSi54aIv90tUFU0lSrgt3nSkwvQ
+      - Secrets__LocalDirectory=/app/secrets
     ports:
       - "5001:8080"
     depends_on:
@@ -42,6 +44,7 @@ services:
     volumes:
       - ../config:/app/config:ro
       - scripts_workspace:/app/workspace
+      - local_secrets:/app/secrets
 
   # WhatsApp Bridge (Node.js sidecar)
   whatsapp-bridge:
@@ -87,3 +90,4 @@ volumes:
   whatsapp_session:
   whatsapp_logs:
   scripts_workspace:
+  local_secrets:
