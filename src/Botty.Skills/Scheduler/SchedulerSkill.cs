@@ -4,6 +4,7 @@ using Botty.Core.Models;
 using Botty.Skills.Base;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using System.Text.Json.Serialization;
 
 namespace Botty.Skills.Scheduler;
 
@@ -200,15 +201,25 @@ public class SchedulerSkill : BaseSkill
 
     private sealed class ScheduleCronJobArgs
     {
+        [JsonPropertyName("name")]
         public string? Name { get; set; }
+
+        [JsonPropertyName("description")]
         public string? Description { get; set; }
+
+        [JsonPropertyName("cron_expression")]
         public string? CronExpression { get; set; }
+
+        [JsonPropertyName("task_title")]
         public string? TaskTitle { get; set; }
+
+        [JsonPropertyName("task_description")]
         public string? TaskDescription { get; set; }
     }
 
     private sealed class CancelScheduledTaskArgs
     {
+        [JsonPropertyName("task_id")]
         public string? TaskId { get; set; }
     }
 }

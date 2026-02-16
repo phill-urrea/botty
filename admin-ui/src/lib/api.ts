@@ -348,16 +348,19 @@ export interface ScheduledTask {
 
 // Scheduler API
 export const schedulerApi = {
-  list: () => fetchApi<{ tasks: ScheduledTask[] }>('/scheduler/tasks'),
-  get: (id: string) => fetchApi<ScheduledTask>(`/scheduler/tasks/${id}`),
+  list: async () => {
+    const tasks = await fetchApi<ScheduledTask[]>('/scheduler');
+    return { tasks };
+  },
+  get: (id: string) => fetchApi<ScheduledTask>(`/scheduler/${id}`),
   create: (task: Omit<ScheduledTask, 'id' | 'createdAt' | 'lastRunAt' | 'nextRunAt'>) =>
-    fetchApi<ScheduledTask>('/scheduler/tasks', { method: 'POST', body: JSON.stringify(task) }),
+    fetchApi<ScheduledTask>('/scheduler', { method: 'POST', body: JSON.stringify(task) }),
   update: (id: string, task: Partial<ScheduledTask>) =>
-    fetchApi<ScheduledTask>(`/scheduler/tasks/${id}`, { method: 'PUT', body: JSON.stringify(task) }),
-  delete: (id: string) => fetchApi<void>(`/scheduler/tasks/${id}`, { method: 'DELETE' }),
-  enable: (id: string) => fetchApi<ScheduledTask>(`/scheduler/tasks/${id}/enable`, { method: 'POST' }),
-  disable: (id: string) => fetchApi<ScheduledTask>(`/scheduler/tasks/${id}/disable`, { method: 'POST' }),
-  runNow: (id: string) => fetchApi<void>(`/scheduler/tasks/${id}/run`, { method: 'POST' }),
+    fetchApi<ScheduledTask>(`/scheduler/${id}`, { method: 'PUT', body: JSON.stringify(task) }),
+  delete: (id: string) => fetchApi<void>(`/scheduler/${id}`, { method: 'DELETE' }),
+  enable: (id: string) => fetchApi<ScheduledTask>(`/scheduler/${id}/enable`, { method: 'POST' }),
+  disable: (id: string) => fetchApi<ScheduledTask>(`/scheduler/${id}/disable`, { method: 'POST' }),
+  runNow: (id: string) => fetchApi<void>(`/scheduler/${id}/run`, { method: 'POST' }),
 };
 
 // WhatsApp Types
