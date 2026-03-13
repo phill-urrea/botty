@@ -24,12 +24,12 @@ public class SchedulerController : ControllerBase
     }
 
     /// <summary>
-    /// Gets all active scheduled tasks.
+    /// Gets all scheduled tasks (active and inactive).
     /// </summary>
     [HttpGet]
     public async Task<IActionResult> GetScheduledTasks(CancellationToken ct)
     {
-        var tasks = await _schedulerService.GetActiveScheduledTasksAsync(ct);
+        var tasks = await _schedulerService.GetAllScheduledTasksAsync(ct);
         return Ok(tasks.Select(MapToDto));
     }
 
@@ -106,6 +106,8 @@ public class SchedulerController : ControllerBase
             Name = request.Name,
             Description = request.Description,
             CronExpression = request.CronExpression,
+            Prompt = request.Prompt,
+            Timezone = request.Timezone,
             MaxOccurrences = request.MaxOccurrences,
             IsActive = request.IsActive
         };
@@ -114,6 +116,57 @@ public class SchedulerController : ControllerBase
         {
             var task = await _schedulerService.UpdateScheduledTaskAsync(taskId, updateRequest, ct);
             return Ok(MapToDto(task));
+        }
+        catch (InvalidOperationException)
+        {
+            return NotFound();
+        }
+    }
+
+    /// <summary>
+    /// Enables a scheduled task.
+    /// </summary>
+    [HttpPost("{taskId:guid}/enable")]
+    public async Task<IActionResult> EnableScheduledTask(Guid taskId, CancellationToken ct)
+    {
+        try
+        {
+            var task = await _schedulerService.UpdateScheduledTaskAsync(taskId, new UpdateScheduledTaskRequest { IsActive = true }, ct);
+            return Ok(MapToDto(task));
+        }
+        catch (InvalidOperationException)
+        {
+            return NotFound();
+        }
+    }
+
+    /// <summary>
+    /// Disables a scheduled task.
+    /// </summary>
+    [HttpPost("{taskId:guid}/disable")]
+    public async Task<IActionResult> DisableScheduledTask(Guid taskId, CancellationToken ct)
+    {
+        try
+        {
+            var task = await _schedulerService.UpdateScheduledTaskAsync(taskId, new UpdateScheduledTaskRequest { IsActive = false }, ct);
+            return Ok(MapToDto(task));
+        }
+        catch (InvalidOperationException)
+        {
+            return NotFound();
+        }
+    }
+
+    /// <summary>
+    /// Triggers immediate execution of a scheduled task.
+    /// </summary>
+    [HttpPost("{taskId:guid}/run")]
+    public async Task<IActionResult> RunScheduledTaskNow(Guid taskId, CancellationToken ct)
+    {
+        try
+        {
+            await _schedulerService.RunNowAsync(taskId, ct);
+            return Ok(new { triggered = true });
         }
         catch (InvalidOperationException)
         {
@@ -195,6 +248,8 @@ public class SchedulerController : ControllerBase
         MaxOccurrences = task.MaxOccurrences,
         OccurrenceCount = task.OccurrenceCount,
         IsActive = task.IsActive,
+        Prompt = task.Prompt,
+        Timezone = task.Timezone,
         CreatedBy = task.CreatedBy,
         CreatedAt = task.CreatedAt,
         TaskTemplate = new TaskTemplateDto
@@ -223,6 +278,8 @@ public class ScheduledTaskDto
     public int? MaxOccurrences { get; set; }
     public int OccurrenceCount { get; set; }
     public bool IsActive { get; set; }
+    public string? Prompt { get; set; }
+    public string? Timezone { get; set; }
     public required string CreatedBy { get; set; }
     public DateTime CreatedAt { get; set; }
     public required TaskTemplateDto TaskTemplate { get; set; }
@@ -261,6 +318,8 @@ public class UpdateScheduledTaskDto
     public string? Name { get; set; }
     public string? Description { get; set; }
     public string? CronExpression { get; set; }
+    public string? Prompt { get; set; }
+    public string? Timezone { get; set; }
     public int? MaxOccurrences { get; set; }
     public bool? IsActive { get; set; }
 }

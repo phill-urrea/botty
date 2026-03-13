@@ -9,7 +9,7 @@ using Botty.LLM;
 using Botty.Memory;
 using Botty.Scheduler;
 using Botty.Secrets;
-using Botty.Skills;
+using Botty.Tools;
 using Botty.Workflow;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -20,6 +20,7 @@ builder.Services.AddOpenApi();
 builder.Services.Configure<OAuthOptions>(builder.Configuration.GetSection("OAuth:Providers"));
 
 // CORS: allow admin UI (and other configured origins) for cross-origin requests
+var additionalCorsOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
 builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
@@ -28,8 +29,16 @@ builder.Services.AddCors(options =>
             {
                 if (string.IsNullOrEmpty(origin)) return false;
                 var uri = new Uri(origin);
-                return (uri.Host == "localhost" || uri.Host == "127.0.0.1") &&
-                       (uri.Scheme == "http" || uri.Scheme == "https");
+                // Always allow localhost for development
+                if (uri.Host is "localhost" or "127.0.0.1")
+                    return true;
+                // Allow GCP Cloud Run origins in production
+                if (uri.Host.EndsWith(".run.app") && uri.Scheme == "https")
+                    return true;
+                // Allow explicitly configured origins
+                if (additionalCorsOrigins.Length > 0 && additionalCorsOrigins.Contains(origin))
+                    return true;
+                return false;
             })
             .AllowAnyMethod()
             .AllowAnyHeader()
@@ -59,10 +68,10 @@ builder.Services.AddWorkflowServices();
 // Add Scheduler (Cron jobs + Background processing)
 builder.Services.AddSchedulerServices();
 
-// Add Skills Framework (Gmail, Calendar, Shell)
-var connectionString = builder.Configuration.GetConnectionString("DefaultConnection") 
+// Add Tools Framework (Gmail, Calendar, Shell)
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
     ?? throw new InvalidOperationException("Connection string not configured");
-builder.Services.AddSkillsFramework(connectionString);
+builder.Services.AddToolsFramework(connectionString);
 
 // Add Channels (WhatsApp, Telegram, Slack, Discord)
 builder.Services.AddChannels(builder.Configuration);
@@ -96,7 +105,7 @@ builder.Services.AddHttpClient("HookHttpCallback", c => c.Timeout = TimeSpan.Fro
 builder.Services.AddKeyedScoped<IHookAction, CreateTaskAction>("create_task");
 builder.Services.AddKeyedScoped<IHookAction, SendMessageAction>("send_message");
 builder.Services.AddKeyedScoped<IHookAction, HttpCallbackAction>("http_callback");
-builder.Services.AddKeyedScoped<IHookAction, ExecuteSkillAction>("execute_skill");
+builder.Services.AddKeyedScoped<IHookAction, ExecuteToolAction>("execute_skill");
 
 // Feed WebSocket and broadcast
 builder.Services.AddSingleton<FeedWebSocketManager>();
@@ -107,8 +116,8 @@ builder.Services.AddHostedService<ChannelAutoReplyService>();
 
 var app = builder.Build();
 
-// Initialize skills on startup
-await app.Services.InitializeSkillsAsync();
+// Initialize tools on startup
+await app.Services.InitializeToolsAsync();
 
 // Ensure hooks tables exist (for existing DBs that skipped init scripts)
 using (var scope = app.Services.CreateScope())
@@ -118,6 +127,7 @@ using (var scope = app.Services.CreateScope())
     await KanbanSchemaEnsurer.EnsureAsync(db);
     await MemorySchemaEnsurer.EnsureAsync(db);
     await HooksSchemaEnsurer.EnsureAsync(db);
+    await SchedulerSchemaEnsurer.EnsureAsync(db);
     await scope.ServiceProvider.GetRequiredService<HookService>().LoadHooksIntoRegistryAsync();
     await scope.ServiceProvider.GetRequiredService<LegacyOAuthAccountMigrator>().MigrateAsync();
 }

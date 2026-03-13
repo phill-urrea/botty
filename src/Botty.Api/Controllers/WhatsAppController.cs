@@ -363,6 +363,7 @@ public class QueueMessageRequest
     public required string Body { get; set; }
     public string? RecipientName { get; set; }
     public string? ReplyToMessageId { get; set; }
+    [System.Text.Json.Serialization.JsonConverter(typeof(System.Text.Json.Serialization.JsonStringEnumConverter))]
     public TaskPriority? Priority { get; set; }
     /// <summary>
     /// Optional account ID for multi-account routing. Defaults to the configured default account.

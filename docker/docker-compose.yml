@@ -41,6 +41,12 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8080/health', timeout=2)\""]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 15s
     volumes:
       - ../config:/app/config:ro
       - scripts_workspace:/app/workspace
@@ -56,12 +62,13 @@ services:
       - PORT=3001
       - BOTTY_API_URL=http://api:8080
       - HEADLESS=true
-      - AUTO_CREATE_TASKS=true
+      - AUTO_CREATE_TASKS=false
       - LOG_LEVEL=info
     ports:
       - "3001:3001"
     depends_on:
-      - api
+      api:
+        condition: service_healthy
     volumes:
       - whatsapp_session:/app/.wwebjs_auth
       - whatsapp_logs:/app/logs
@@ -82,8 +89,10 @@ services:
     ports:
       - "3000:3000"
     depends_on:
-      - api
-      - whatsapp-bridge
+      api:
+        condition: service_healthy
+      whatsapp-bridge:
+        condition: service_started
 
 volumes:
   postgres_data:

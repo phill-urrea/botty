@@ -160,8 +160,8 @@ public class AssistantEventLoop : BackgroundService
             TaskType.General => await ExecuteGeneralTaskAsync(task, services, ct),
             TaskType.SendMessage => await ExecuteSendMessageAsync(task, services, ct),
             TaskType.SystemChange => await ExecuteSystemChangeAsync(task, services, ct),
-            TaskType.SkillExecution => await ExecuteSkillAsync(task, services, ct),
-            TaskType.NewSkillCreation => await ExecuteNewSkillCreationAsync(task, services, ct),
+            TaskType.SkillExecution => await ExecuteToolAsync(task, services, ct),
+            TaskType.NewSkillCreation => await ExecuteNewToolCreationAsync(task, services, ct),
             TaskType.ShellCommand => await ExecuteShellCommandAsync(task, services, ct),
             TaskType.MemoryModification => await ExecuteMemoryModificationAsync(task, services, ct),
             TaskType.CalendarChange => await ExecuteCalendarChangeAsync(task, services, ct),
@@ -207,7 +207,7 @@ public class AssistantEventLoop : BackgroundService
             "sendwhatsapp" => await ExecuteSendWhatsAppFromActionAsync(task.PendingActionData, services, ct),
             "shellcommand" => await ExecuteShellFromActionAsync(task.PendingActionData, services, ct),
             "systemchange" => await ExecuteSystemChangeFromActionAsync(task.PendingActionData, services, ct),
-            "executeskilltool" => await ExecuteSkillToolFromActionAsync(task, task.PendingActionData, services, ct),
+            "executeskilltool" => await ExecuteToolFromActionAsync(task, task.PendingActionData, services, ct),
             _ => $"Executed action: {task.PendingActionData.ActionType}"
         };
 
@@ -219,12 +219,90 @@ public class AssistantEventLoop : BackgroundService
         await kanbanService.MoveTaskAsync(task.Id, KanbanLane.Done, ct);
     }
 
-    // Task execution methods - these will be expanded as more services are implemented
+    // Task execution methods
 
-    private Task<string> ExecuteGeneralTaskAsync(KanbanTask task, IServiceProvider services, CancellationToken ct)
+    private async Task<string> ExecuteGeneralTaskAsync(KanbanTask task, IServiceProvider services, CancellationToken ct)
     {
-        // General tasks might involve LLM reasoning
-        return Task.FromResult($"General task completed: {task.Title}");
+        // If the task has a description (prompt), run it through the LLM with tools
+        if (!string.IsNullOrWhiteSpace(task.Description))
+        {
+            var executor = services.GetRequiredService<LlmTaskExecutor>();
+            var result = await executor.ExecuteAsync(task, ct);
+
+            // Deliver result to WhatsApp self-chat
+            await DeliverToWhatsAppSelfChatAsync(task.Title, result, services, ct);
+
+            return result;
+        }
+
+        return $"General task completed: {task.Title}";
+    }
+
+    private async Task DeliverToWhatsAppSelfChatAsync(
+        string taskTitle,
+        string content,
+        IServiceProvider services,
+        CancellationToken ct)
+    {
+        try
+        {
+            var channelRegistry = services.GetRequiredService<IChannelRegistry>();
+            var status = await channelRegistry.GetStatusAsync("whatsapp");
+
+            // If not connected, try lazy initialization (matches ChannelAutoReplyService pattern)
+            if (status is not { IsConnected: true, AccountId: not null })
+            {
+                _logger.LogInformation("WhatsApp not connected for scheduled task '{Title}', attempting lazy initialization...", taskTitle);
+                try
+                {
+                    await channelRegistry.InitializeChannelAsync("whatsapp", ct);
+                    status = await channelRegistry.GetStatusAsync("whatsapp");
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Lazy initialization of WhatsApp channel failed");
+                }
+            }
+
+            if (status is not { IsConnected: true, AccountId: not null })
+            {
+                _logger.LogWarning("WhatsApp not connected after initialization attempt, cannot deliver scheduled task result for '{Title}'", taskTitle);
+                return;
+            }
+
+            var selfChatId = $"{status.AccountId}@c.us";
+            var outbound = new OutboundMessage(selfChatId, content);
+            var sendResult = await channelRegistry.SendToChannelAsync("whatsapp", outbound, ct);
+
+            // If send failed due to connection issue, retry with lazy init
+            if (!sendResult.Success && sendResult.Error?.Contains("not connected") == true)
+            {
+                _logger.LogInformation("WhatsApp send failed (not connected), retrying with lazy initialization...");
+                try
+                {
+                    await channelRegistry.InitializeChannelAsync("whatsapp", ct);
+                    sendResult = await channelRegistry.SendToChannelAsync("whatsapp", outbound, ct);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Lazy initialization retry for WhatsApp failed");
+                }
+            }
+
+            if (sendResult.Success)
+            {
+                _logger.LogInformation("Delivered scheduled task result for '{Title}' to WhatsApp self-chat", taskTitle);
+            }
+            else
+            {
+                _logger.LogWarning("Failed to deliver scheduled task result for '{Title}': {Error}",
+                    taskTitle, sendResult.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error delivering scheduled task result for '{Title}' to WhatsApp", taskTitle);
+        }
     }
 
     private Task<string> ExecuteSendMessageAsync(KanbanTask task, IServiceProvider services, CancellationToken ct)
@@ -239,16 +317,16 @@ public class AssistantEventLoop : BackgroundService
         return Task.FromResult("System change executed");
     }
 
-    private Task<string> ExecuteSkillAsync(KanbanTask task, IServiceProvider services, CancellationToken ct)
+    private Task<string> ExecuteToolAsync(KanbanTask task, IServiceProvider services, CancellationToken ct)
     {
-        // Will integrate with skills system in Phase 6
-        return Task.FromResult("Skill execution not yet implemented (Phase 6)");
+        // Will integrate with tools system in Phase 6
+        return Task.FromResult("Tool execution not yet implemented (Phase 6)");
     }
 
-    private Task<string> ExecuteNewSkillCreationAsync(KanbanTask task, IServiceProvider services, CancellationToken ct)
+    private Task<string> ExecuteNewToolCreationAsync(KanbanTask task, IServiceProvider services, CancellationToken ct)
     {
-        // Will allow assistant to create new skills in Phase 6
-        return Task.FromResult("New skill creation not yet implemented (Phase 6)");
+        // Will allow assistant to create new tools in Phase 6
+        return Task.FromResult("New tool creation not yet implemented (Phase 6)");
     }
 
     private Task<string> ExecuteShellCommandAsync(KanbanTask task, IServiceProvider services, CancellationToken ct)
@@ -360,7 +438,7 @@ public class AssistantEventLoop : BackgroundService
         return Task.FromResult($"Applied system change: {action.Description ?? "No description"}");
     }
 
-    private async Task<string> ExecuteSkillToolFromActionAsync(
+    private async Task<string> ExecuteToolFromActionAsync(
         KanbanTask task,
         PendingAction action,
         IServiceProvider services,
@@ -382,8 +460,8 @@ public class AssistantEventLoop : BackgroundService
         Guid? contextTaskId = task.Id;
         Guid? contextUserId = task.UserId ?? ParseGuid(payload, "userId");
 
-        var skillRegistry = services.GetRequiredService<ISkillRegistry>();
-        var result = await skillRegistry.ExecuteToolAsync(
+        var toolRegistry = services.GetRequiredService<IToolRegistry>();
+        var result = await toolRegistry.ExecuteToolAsync(
             toolName,
             arguments,
             contextConversationId,

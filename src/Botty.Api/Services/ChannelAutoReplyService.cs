@@ -93,7 +93,7 @@ public class ChannelAutoReplyService : BackgroundService
         using var scope = _scopeFactory.CreateScope();
         var orchestrator = scope.ServiceProvider.GetRequiredService<IConversationOrchestrator>();
         var conversationRepo = scope.ServiceProvider.GetRequiredService<IConversationRepository>();
-        var skillRegistry = scope.ServiceProvider.GetRequiredService<ISkillRegistry>();
+        var toolRegistry = scope.ServiceProvider.GetRequiredService<IToolRegistry>();
         var approvalService = scope.ServiceProvider.GetRequiredService<IApprovalService>();
 
         // Determine self-chat ID for WhatsApp (used to provide cross-conversation tools)
@@ -127,7 +127,7 @@ public class ChannelAutoReplyService : BackgroundService
                 : m.Content
         }).ToList();
 
-        var tools = skillRegistry.GetAll().SelectMany(s => s.GetTools()).ToList();
+        var tools = toolRegistry.GetAll().SelectMany(s => s.GetTools()).ToList();
 
         // In self-chat, append cross-conversation tools
         if (selfChatId != null)
@@ -164,7 +164,7 @@ public class ChannelAutoReplyService : BackgroundService
         {
             response = await RunToolLoopAsync(
                 orchestrator,
-                skillRegistry,
+                toolRegistry,
                 conversationRepo,
                 approvalService,
                 selfChatId,
@@ -268,7 +268,7 @@ public class ChannelAutoReplyService : BackgroundService
 
     // ── Custom tool execution ─────────────────────────────────────────────
 
-    private async Task<SkillResult?> TryExecuteCustomToolAsync(
+    private async Task<ToolResult?> TryExecuteCustomToolAsync(
         string toolName, string arguments, IConversationRepository conversationRepo, string? selfChatId)
     {
         return toolName switch
@@ -279,7 +279,7 @@ public class ChannelAutoReplyService : BackgroundService
         };
     }
 
-    private async Task<SkillResult> ExecuteGetRecentMessages(
+    private async Task<ToolResult> ExecuteGetRecentMessages(
         string arguments, IConversationRepository conversationRepo, string? selfChatId)
     {
         var args = JsonSerializer.Deserialize<GetRecentMessagesArgs>(arguments, JsonOptions) ?? new();
@@ -318,10 +318,10 @@ public class ChannelAutoReplyService : BackgroundService
             timestamp = m.CreatedAt.ToString("o")
         });
 
-        return SkillResult.Ok(JsonSerializer.Serialize(new { count = results.Count(), messages = results }, JsonOptions));
+        return ToolResult.Ok(JsonSerializer.Serialize(new { count = results.Count(), messages = results }, JsonOptions));
     }
 
-    private async Task<SkillResult> ExecuteListConversations(
+    private async Task<ToolResult> ExecuteListConversations(
         IConversationRepository conversationRepo, string? selfChatId)
     {
         var conversations = await conversationRepo.ListConversationsAsync();
@@ -343,14 +343,14 @@ public class ChannelAutoReplyService : BackgroundService
             last_activity = c.UpdatedAt.ToString("o")
         });
 
-        return SkillResult.Ok(JsonSerializer.Serialize(new { count = results.Count(), conversations = results }, JsonOptions));
+        return ToolResult.Ok(JsonSerializer.Serialize(new { count = results.Count(), conversations = results }, JsonOptions));
     }
 
     // ── Tool loop ─────────────────────────────────────────────────────────
 
     private async Task<ConversationResponse> RunToolLoopAsync(
         IConversationOrchestrator orchestrator,
-        ISkillRegistry skillRegistry,
+        IToolRegistry toolRegistry,
         IConversationRepository conversationRepo,
         IApprovalService approvalService,
         string? selfChatId,
@@ -403,16 +403,16 @@ public class ChannelAutoReplyService : BackgroundService
                     continue;
                 }
 
-                // Try custom self-chat tools first, then fall back to skill registry
-                var skillResult = await TryExecuteCustomToolAsync(tc.Name, tc.Arguments ?? "{}", conversationRepo, selfChatId)
-                    ?? await skillRegistry.ExecuteToolAsync(tc.Name, tc.Arguments ?? "{}");
+                // Try custom self-chat tools first, then fall back to tool registry
+                var toolResult = await TryExecuteCustomToolAsync(tc.Name, tc.Arguments ?? "{}", conversationRepo, selfChatId)
+                    ?? await toolRegistry.ExecuteToolAsync(tc.Name, tc.Arguments ?? "{}");
 
-                if (!skillResult.Success)
+                if (!toolResult.Success)
                 {
                     _logger.LogWarning("Tool {ToolName} failed in auto-reply. Error: {Error}",
-                        tc.Name, skillResult.Error ?? "(none)");
+                        tc.Name, toolResult.Error ?? "(none)");
                 }
-                var content = skillResult.Success ? (skillResult.Result ?? string.Empty) : $"Error: {skillResult.Error}";
+                var content = toolResult.Success ? (toolResult.Result ?? string.Empty) : $"Error: {toolResult.Error}";
                 toolResults.Add(new LlmToolResult { ToolUseId = tc.Id, Content = content });
             }
 

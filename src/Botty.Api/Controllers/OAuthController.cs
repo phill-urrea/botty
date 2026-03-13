@@ -2,7 +2,7 @@ using Botty.Api.Services;
 using Botty.Core.Enums;
 using Botty.Core.Interfaces;
 using Microsoft.AspNetCore.Mvc;
-using Botty.Skills.Registry;
+using Botty.Tools.Registry;
 
 namespace Botty.Api.Controllers;
 
@@ -13,8 +13,8 @@ public class OAuthController : ControllerBase
     private readonly IOAuthProviderConfigService _configService;
     private readonly IOAuthStateStore _stateStore;
     private readonly ILinkedAccountService _linkedAccountService;
-    private readonly ISkillConfigService _skillConfigService;
-    private readonly ISkillRegistry _skillRegistry;
+    private readonly IToolConfigService _toolConfigService;
+    private readonly IToolRegistry _toolRegistry;
     private readonly Dictionary<OAuthProviderType, IOAuthProviderClient> _providerClients;
     private readonly ILogger<OAuthController> _logger;
 
@@ -22,16 +22,16 @@ public class OAuthController : ControllerBase
         IOAuthProviderConfigService configService,
         IOAuthStateStore stateStore,
         ILinkedAccountService linkedAccountService,
-        ISkillConfigService skillConfigService,
-        ISkillRegistry skillRegistry,
+        IToolConfigService toolConfigService,
+        IToolRegistry toolRegistry,
         IEnumerable<IOAuthProviderClient> providerClients,
         ILogger<OAuthController> logger)
     {
         _configService = configService;
         _stateStore = stateStore;
         _linkedAccountService = linkedAccountService;
-        _skillConfigService = skillConfigService;
-        _skillRegistry = skillRegistry;
+        _toolConfigService = toolConfigService;
+        _toolRegistry = toolRegistry;
         _providerClients = providerClients.ToDictionary(c => c.Provider);
         _logger = logger;
     }
@@ -113,7 +113,7 @@ public class OAuthController : ControllerBase
             _logger.LogInformation("Linked account {Email} via provider {Provider}", linked.Email, provider);
             if (providerType.Value == OAuthProviderType.Google)
             {
-                await ReinitializeGoogleSkillsAsync(ct);
+                await ReinitializeGoogleToolsAsync(ct);
             }
 
             if (!string.IsNullOrWhiteSpace(stateData.ReturnUrl))
@@ -209,36 +209,36 @@ public class OAuthController : ControllerBase
         await _configService.SaveAsync(providerType.Value, request.ClientId, request.ClientSecret, request.RedirectUri, scopes, ct);
         if (providerType.Value == OAuthProviderType.Google)
         {
-            await SyncGoogleClientCredentialsIntoSkillsAsync(request.ClientId, request.ClientSecret, ct);
+            await SyncGoogleClientCredentialsIntoToolsAsync(request.ClientId, request.ClientSecret, ct);
         }
         return Ok(new { success = true });
     }
 
-    private async Task SyncGoogleClientCredentialsIntoSkillsAsync(string clientId, string clientSecret, CancellationToken ct)
+    private async Task SyncGoogleClientCredentialsIntoToolsAsync(string clientId, string clientSecret, CancellationToken ct)
     {
-        var targetSkills = GetGoogleSkillIds();
-        foreach (var skillId in targetSkills)
+        var targetTools = GetGoogleToolIds();
+        foreach (var toolId in targetTools)
         {
-            await _skillConfigService.SetConfigValueAsync(skillId, "client_id", clientId, ct);
-            await _skillConfigService.SetConfigValueAsync(skillId, "client_secret", clientSecret, ct);
+            await _toolConfigService.SetConfigValueAsync(toolId, "client_id", clientId, ct);
+            await _toolConfigService.SetConfigValueAsync(toolId, "client_secret", clientSecret, ct);
         }
 
-        await ReinitializeGoogleSkillsAsync(ct);
+        await ReinitializeGoogleToolsAsync(ct);
     }
 
-    private async Task ReinitializeGoogleSkillsAsync(CancellationToken ct)
+    private async Task ReinitializeGoogleToolsAsync(CancellationToken ct)
     {
-        foreach (var skillId in GetGoogleSkillIds())
+        foreach (var toolId in GetGoogleToolIds())
         {
-            var skill = _skillRegistry.Get(skillId);
-            if (skill == null)
+            var tool = _toolRegistry.Get(toolId);
+            if (tool == null)
                 continue;
-            var config = await _skillConfigService.GetConfigAsync(skillId, ct);
-            await skill.InitializeAsync(config, ct);
+            var config = await _toolConfigService.GetConfigAsync(toolId, ct);
+            await tool.InitializeAsync(config, ct);
         }
     }
 
-    private static string[] GetGoogleSkillIds()
+    private static string[] GetGoogleToolIds()
     {
         return ["gmail", "google-calendar"];
     }

@@ -9,16 +9,16 @@ namespace Botty.Api.Services;
 /// </summary>
 public class LegacyOAuthAccountMigrator
 {
-    private readonly ISkillConfigService _skillConfigService;
+    private readonly IToolConfigService _toolConfigService;
     private readonly ILinkedAccountService _linkedAccountService;
     private readonly ILogger<LegacyOAuthAccountMigrator> _logger;
 
     public LegacyOAuthAccountMigrator(
-        ISkillConfigService skillConfigService,
+        IToolConfigService toolConfigService,
         ILinkedAccountService linkedAccountService,
         ILogger<LegacyOAuthAccountMigrator> logger)
     {
-        _skillConfigService = skillConfigService;
+        _toolConfigService = toolConfigService;
         _linkedAccountService = linkedAccountService;
         _logger = logger;
     }
@@ -26,17 +26,17 @@ public class LegacyOAuthAccountMigrator
     public async Task MigrateAsync(CancellationToken ct = default)
     {
         var migrated = 0;
-        migrated += await MigrateSkillAccountsAsync("gmail", ct);
-        migrated += await MigrateSkillAccountsAsync("google-calendar", ct);
+        migrated += await MigrateToolAccountsAsync("gmail", ct);
+        migrated += await MigrateToolAccountsAsync("google-calendar", ct);
         if (migrated > 0)
             _logger.LogInformation("Imported {Count} legacy OAuth account(s) into linked account storage.", migrated);
     }
 
-    private async Task<int> MigrateSkillAccountsAsync(string skillId, CancellationToken ct)
+    private async Task<int> MigrateToolAccountsAsync(string toolId, CancellationToken ct)
     {
         try
         {
-            var config = await _skillConfigService.GetConfigAsync(skillId, ct);
+            var config = await _toolConfigService.GetConfigAsync(toolId, ct);
             var accountsJson = config.GetValue("accounts");
             if (string.IsNullOrWhiteSpace(accountsJson))
                 return 0;
@@ -64,7 +64,7 @@ public class LegacyOAuthAccountMigrator
         }
         catch (Exception ex)
         {
-            _logger.LogDebug(ex, "Skipping legacy account import for skill {SkillId}", skillId);
+            _logger.LogDebug(ex, "Skipping legacy account import for tool {ToolId}", toolId);
             return 0;
         }
     }

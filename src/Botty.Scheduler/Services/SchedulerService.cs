@@ -52,7 +52,9 @@ public class SchedulerService : ISchedulerService
             IsRecurring = request.IsRecurring,
             MaxOccurrences = request.MaxOccurrences,
             IsActive = true,
-            CreatedBy = request.CreatedBy
+            CreatedBy = request.CreatedBy,
+            Prompt = request.Prompt,
+            Timezone = request.Timezone
         };
 
         return await _repository.CreateAsync(task, ct);
@@ -68,6 +70,11 @@ public class SchedulerService : ISchedulerService
         return await _repository.GetAllAsync(includeInactive: false, ct);
     }
 
+    public async Task<IEnumerable<ScheduledTask>> GetAllScheduledTasksAsync(CancellationToken ct = default)
+    {
+        return await _repository.GetAllAsync(includeInactive: true, ct);
+    }
+
     public async Task<ScheduledTask> UpdateScheduledTaskAsync(
         Guid taskId,
         UpdateScheduledTaskRequest request,
@@ -80,6 +87,10 @@ public class SchedulerService : ISchedulerService
             task.Name = request.Name;
         if (request.Description != null)
             task.Description = request.Description;
+        if (request.Prompt != null)
+            task.Prompt = request.Prompt;
+        if (request.Timezone != null)
+            task.Timezone = request.Timezone;
         if (request.TaskTemplate != null)
             task.TaskTemplate = request.TaskTemplate;
         if (request.MaxOccurrences.HasValue)
@@ -113,6 +124,20 @@ public class SchedulerService : ISchedulerService
             task.IsActive = false;
             await _repository.UpdateAsync(task, ct);
         }
+    }
+
+    public async Task RunNowAsync(Guid taskId, CancellationToken ct = default)
+    {
+        var task = await _repository.GetByIdAsync(taskId, ct)
+            ?? throw new InvalidOperationException($"Scheduled task {taskId} not found");
+
+        // Set next run to now so the background service picks it up on the next poll
+        task.NextRunAt = DateTime.UtcNow;
+        if (!task.IsActive)
+            task.IsActive = true;
+        await _repository.UpdateAsync(task, ct);
+
+        _logger.LogInformation("Triggered immediate run for scheduled task: {Id} ({Name})", taskId, task.Name);
     }
 
     public async Task DeleteScheduledTaskAsync(Guid taskId, CancellationToken ct = default)

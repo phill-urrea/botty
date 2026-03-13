@@ -24,9 +24,19 @@ public interface ISchedulerService
     Task<IEnumerable<ScheduledTask>> GetActiveScheduledTasksAsync(CancellationToken ct = default);
 
     /// <summary>
+    /// Gets all scheduled tasks (active and inactive).
+    /// </summary>
+    Task<IEnumerable<ScheduledTask>> GetAllScheduledTasksAsync(CancellationToken ct = default);
+
+    /// <summary>
     /// Updates a scheduled task.
     /// </summary>
     Task<ScheduledTask> UpdateScheduledTaskAsync(Guid taskId, UpdateScheduledTaskRequest request, CancellationToken ct = default);
+
+    /// <summary>
+    /// Triggers immediate execution of a scheduled task by resetting its next run time to now.
+    /// </summary>
+    Task RunNowAsync(Guid taskId, CancellationToken ct = default);
 
     /// <summary>
     /// Cancels a scheduled task.
@@ -61,6 +71,8 @@ public class ScheduleTaskRequest
     public bool IsRecurring { get; set; } = true;
     public int? MaxOccurrences { get; set; }
     public string CreatedBy { get; set; } = "user";
+    public string? Prompt { get; set; }
+    public string? Timezone { get; set; }
 }
 
 /// <summary>
@@ -71,6 +83,8 @@ public class UpdateScheduledTaskRequest
     public string? Name { get; set; }
     public string? Description { get; set; }
     public string? CronExpression { get; set; }
+    public string? Prompt { get; set; }
+    public string? Timezone { get; set; }
     public KanbanTaskTemplate? TaskTemplate { get; set; }
     public int? MaxOccurrences { get; set; }
     public bool? IsActive { get; set; }

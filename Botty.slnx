@@ -12,5 +12,6 @@
     <Project Path="src/Botty.Skills/Botty.Skills.csproj" />
     <Project Path="src/Botty.Skills.Tests/Botty.Skills.Tests.csproj" />
     <Project Path="src/Botty.Workflow/Botty.Workflow.csproj" />
+    <Project Path="src/Botty.Cli/Botty.Cli.csproj" />
   </Folder>
 </Solution>

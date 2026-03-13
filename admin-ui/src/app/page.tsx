@@ -66,7 +66,7 @@ export default function Dashboard() {
           memories: { total: 0 }, // Would need a count endpoint
           scheduledTasks: {
             total: scheduled.length,
-            enabled: scheduled.filter(t => t.isEnabled).length,
+            enabled: scheduled.filter(t => t.isActive).length,
           },
           whatsapp: { connected: whatsappConnected },
           apiHealth,

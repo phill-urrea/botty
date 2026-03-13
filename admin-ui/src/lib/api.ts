@@ -338,12 +338,22 @@ export interface ScheduledTask {
   name: string;
   description?: string;
   cronExpression: string;
-  taskType: string;
-  taskPayload?: string;
-  isEnabled: boolean;
+  isActive: boolean;
+  isRecurring: boolean;
+  prompt?: string;
+  timezone?: string;
   lastRunAt?: string;
   nextRunAt?: string;
+  createdBy: string;
   createdAt: string;
+  taskTemplate: {
+    title: string;
+    description?: string;
+    type: string;
+    priority: string;
+    assignee: string;
+    requiresApproval: boolean;
+  };
 }
 
 // Scheduler API
@@ -353,14 +363,14 @@ export const schedulerApi = {
     return { tasks };
   },
   get: (id: string) => fetchApi<ScheduledTask>(`/scheduler/${id}`),
-  create: (task: Omit<ScheduledTask, 'id' | 'createdAt' | 'lastRunAt' | 'nextRunAt'>) =>
+  create: (task: Record<string, unknown>) =>
     fetchApi<ScheduledTask>('/scheduler', { method: 'POST', body: JSON.stringify(task) }),
-  update: (id: string, task: Partial<ScheduledTask>) =>
+  update: (id: string, task: Record<string, unknown>) =>
     fetchApi<ScheduledTask>(`/scheduler/${id}`, { method: 'PUT', body: JSON.stringify(task) }),
   delete: (id: string) => fetchApi<void>(`/scheduler/${id}`, { method: 'DELETE' }),
   enable: (id: string) => fetchApi<ScheduledTask>(`/scheduler/${id}/enable`, { method: 'POST' }),
   disable: (id: string) => fetchApi<ScheduledTask>(`/scheduler/${id}/disable`, { method: 'POST' }),
-  runNow: (id: string) => fetchApi<void>(`/scheduler/${id}/run`, { method: 'POST' }),
+  runNow: (id: string) => fetchApi<{ triggered: boolean }>(`/scheduler/${id}/run`, { method: 'POST' }),
 };
 
 // WhatsApp Types

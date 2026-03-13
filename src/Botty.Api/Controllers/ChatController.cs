@@ -26,7 +26,7 @@ public class ChatController : ControllerBase
     private readonly IConversationOrchestrator _orchestrator;
     private readonly IConversationRepository _conversationRepository;
     private readonly IFeedBroadcastService _feedBroadcast;
-    private readonly ISkillRegistry _skillRegistry;
+    private readonly IToolRegistry _toolRegistry;
     private readonly IApprovalService _approvalService;
     private readonly IConfiguration _configuration;
     private readonly ILogger<ChatController> _logger;
@@ -35,7 +35,7 @@ public class ChatController : ControllerBase
         IConversationOrchestrator orchestrator,
         IConversationRepository conversationRepository,
         IFeedBroadcastService feedBroadcast,
-        ISkillRegistry skillRegistry,
+        IToolRegistry toolRegistry,
         IApprovalService approvalService,
         IConfiguration configuration,
         ILogger<ChatController> logger)
@@ -43,7 +43,7 @@ public class ChatController : ControllerBase
         _orchestrator = orchestrator;
         _conversationRepository = conversationRepository;
         _feedBroadcast = feedBroadcast;
-        _skillRegistry = skillRegistry;
+        _toolRegistry = toolRegistry;
         _approvalService = approvalService;
         _configuration = configuration;
         _logger = logger;
@@ -207,13 +207,13 @@ public class ChatController : ControllerBase
                     continue;
                 }
 
-                var skillResult = await _skillRegistry.ExecuteToolAsync(tc.Name, tc.Arguments ?? "{}", ct);
-                if (!skillResult.Success)
+                var toolResult = await _toolRegistry.ExecuteToolAsync(tc.Name, tc.Arguments ?? "{}", ct);
+                if (!toolResult.Success)
                 {
                     _logger.LogWarning("Tool {ToolName} failed. Arguments: {Arguments}. Error: {Error}",
-                        tc.Name, tc.Arguments ?? "(null)", skillResult.Error ?? "(none)");
+                        tc.Name, tc.Arguments ?? "(null)", toolResult.Error ?? "(none)");
                 }
-                var content = skillResult.Success ? (skillResult.Result ?? string.Empty) : $"Error: {skillResult.Error}";
+                var content = toolResult.Success ? (toolResult.Result ?? string.Empty) : $"Error: {toolResult.Error}";
                 toolResults.Add(new LlmToolResult { ToolUseId = tc.Id, Content = content });
             }
 
@@ -308,7 +308,7 @@ public class ChatController : ControllerBase
                 IncludeMemory = request.IncludeMemory ?? true,
                 ExtractMemories = request.ExtractMemories ?? true,
                 AdditionalContext = request.AdditionalContext,
-                AvailableTools = _skillRegistry.GetAll().SelectMany(s => s.GetTools()).ToList(),
+                AvailableTools = _toolRegistry.GetAll().SelectMany(s => s.GetTools()).ToList(),
                 Parameters = request.Parameters != null ? new LlmParameters
                 {
                     Model = request.Parameters.Model,

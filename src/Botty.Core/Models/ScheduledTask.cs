@@ -68,6 +68,18 @@ public class ScheduledTask
     public bool IsActive { get; set; } = true;
 
     /// <summary>
+    /// Detailed LLM prompt/instruction to execute when this task fires.
+    /// The LLM will be given this prompt along with tools to produce a result.
+    /// </summary>
+    public string? Prompt { get; set; }
+
+    /// <summary>
+    /// IANA timezone identifier (e.g. "Australia/Sydney") for display purposes.
+    /// Cron expressions are always stored/evaluated in UTC.
+    /// </summary>
+    public string? Timezone { get; set; }
+
+    /// <summary>
     /// Who created this scheduled task ("user" or "assistant").
     /// </summary>
     public required string CreatedBy { get; set; }
@@ -112,6 +124,12 @@ public class KanbanTaskTemplate
     /// Whether this task requires approval before execution.
     /// </summary>
     public bool RequiresApproval { get; set; }
+
+    /// <summary>
+    /// Detailed LLM prompt/instruction for executing this task.
+    /// When set, the assistant event loop will run an LLM conversation with tools.
+    /// </summary>
+    public string? Prompt { get; set; }
 
     /// <summary>
     /// Optional pre-filled action for the task.

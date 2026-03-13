@@ -80,11 +80,15 @@ public class SchedulerBackgroundService : BackgroundService
 
         // Create a Kanban task from the template
         var template = scheduledTask.TaskTemplate;
-        
+
+        // Use the scheduled task's prompt as the description so the event loop
+        // can use it as an LLM instruction
+        var effectiveDescription = scheduledTask.Prompt ?? template.Description;
+
         var kanbanTask = new KanbanTask
         {
             Title = template.Title,
-            Description = template.Description,
+            Description = effectiveDescription,
             Lane = template.RequiresApproval ? KanbanLane.NeedsApproval : KanbanLane.ToDo,
             Assignee = template.Assignee,
             Type = template.Type,

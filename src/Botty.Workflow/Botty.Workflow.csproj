@@ -5,6 +5,7 @@
     <ProjectReference Include="..\Botty.Core\Botty.Core.csproj" />
     <ProjectReference Include="..\Botty.Hooks\Botty.Hooks.csproj" />
     <ProjectReference Include="..\Botty.Infrastructure\Botty.Infrastructure.csproj" />
+    <ProjectReference Include="..\Botty.LLM\Botty.LLM.csproj" />
   </ItemGroup>
 
   <ItemGroup>

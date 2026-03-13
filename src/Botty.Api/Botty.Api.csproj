@@ -15,7 +15,7 @@
     <ProjectReference Include="..\Botty.Secrets\Botty.Secrets.csproj" />
     <ProjectReference Include="..\Botty.Memory\Botty.Memory.csproj" />
     <ProjectReference Include="..\Botty.LLM\Botty.LLM.csproj" />
-    <ProjectReference Include="..\Botty.Skills\Botty.Skills.csproj" />
+    <ProjectReference Include="..\Botty.Tools\Botty.Tools.csproj" />
     <ProjectReference Include="..\Botty.Messaging\Botty.Messaging.csproj" />
     <ProjectReference Include="..\Botty.Workflow\Botty.Workflow.csproj" />
     <ProjectReference Include="..\Botty.Scheduler\Botty.Scheduler.csproj" />

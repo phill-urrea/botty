@@ -18,7 +18,7 @@ public class BottyDbContext : DbContext
     public DbSet<Memory> Memories => Set<Memory>();
     public DbSet<KanbanTask> KanbanTasks => Set<KanbanTask>();
     public DbSet<ScheduledTask> ScheduledTasks => Set<ScheduledTask>();
-    public DbSet<SkillConfigValue> SkillConfigs => Set<SkillConfigValue>();
+    public DbSet<ToolConfigValue> ToolConfigs => Set<ToolConfigValue>();
     public DbSet<SecretReference> SecretReferences => Set<SecretReference>();
     public DbSet<SoulVersion> SoulVersions => Set<SoulVersion>();
     public DbSet<Conversation> Conversations => Set<Conversation>();
@@ -113,6 +113,8 @@ public class BottyDbContext : DbContext
             entity.Property(e => e.MaxOccurrences).HasColumnName("max_occurrences");
             entity.Property(e => e.OccurrenceCount).HasColumnName("occurrence_count");
             entity.Property(e => e.IsActive).HasColumnName("is_active");
+            entity.Property(e => e.Prompt).HasColumnName("prompt");
+            entity.Property(e => e.Timezone).HasColumnName("timezone").HasMaxLength(50);
             entity.Property(e => e.CreatedBy).HasColumnName("created_by");
             entity.Property(e => e.CreatedAt).HasColumnName("created_at");
 
@@ -127,19 +129,19 @@ public class BottyDbContext : DbContext
             });
         });
 
-        // SkillConfigValue entity configuration
-        modelBuilder.Entity<SkillConfigValue>(entity =>
+        // ToolConfigValue entity configuration
+        modelBuilder.Entity<ToolConfigValue>(entity =>
         {
             entity.ToTable("skill_configs");
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Id).HasColumnName("id");
-            entity.Property(e => e.SkillId).HasColumnName("skill_id");
+            entity.Property(e => e.ToolId).HasColumnName("skill_id");
             entity.Property(e => e.Key).HasColumnName("key");
             entity.Property(e => e.Value).HasColumnName("value");
             entity.Property(e => e.IsSensitive).HasColumnName("is_sensitive");
             entity.Property(e => e.UpdatedAt).HasColumnName("updated_at");
 
-            entity.HasIndex(e => new { e.SkillId, e.Key }).IsUnique();
+            entity.HasIndex(e => new { e.ToolId, e.Key }).IsUnique();
         });
 
         // SecretReference entity configuration

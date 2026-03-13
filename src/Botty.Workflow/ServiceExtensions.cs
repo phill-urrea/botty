@@ -21,6 +21,7 @@ public static class ServiceExtensions
         // Kanban and approval services
         services.AddScoped<IKanbanService, KanbanService>();
         services.AddScoped<IApprovalService, ApprovalService>();
+        services.AddScoped<LlmTaskExecutor>();
         
         // Background event loop
         if (enableEventLoop)

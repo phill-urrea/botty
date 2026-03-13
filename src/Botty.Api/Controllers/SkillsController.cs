@@ -1,36 +1,36 @@
 using Botty.Core.Interfaces;
-using Botty.Skills.Registry;
-using Botty.Skills.Services;
+using Botty.Tools.Registry;
+using Botty.Tools.Services;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Botty.Api.Controllers;
 
 /// <summary>
-/// Controller for managing skills and their configurations.
+/// Controller for managing tools and their configurations.
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
 public class SkillsController : ControllerBase
 {
-    private readonly ISkillRegistry _registry;
-    private readonly ISkillConfigService _configService;
-    private readonly SkillRegistry _skillRegistry;
+    private readonly IToolRegistry _registry;
+    private readonly IToolConfigService _configService;
+    private readonly ToolRegistry _toolRegistry;
     private readonly ILogger<SkillsController> _logger;
 
     public SkillsController(
-        ISkillRegistry registry,
-        ISkillConfigService configService,
-        SkillRegistry skillRegistry,
+        IToolRegistry registry,
+        IToolConfigService configService,
+        ToolRegistry toolRegistry,
         ILogger<SkillsController> logger)
     {
         _registry = registry;
         _configService = configService;
-        _skillRegistry = skillRegistry;
+        _toolRegistry = toolRegistry;
         _logger = logger;
     }
 
     /// <summary>
-    /// Lists all registered skills.
+    /// Lists all registered tools.
     /// </summary>
     [HttpGet]
     public async Task<IActionResult> ListSkills(CancellationToken ct)
@@ -43,7 +43,7 @@ public class SkillsController : ControllerBase
             ToolCount = s.GetTools().Count()
         }).ToList();
 
-        // Check configuration status for each skill
+        // Check configuration status for each tool
         foreach (var skill in skills)
         {
             skill.IsConfigured = await _registry.IsConfiguredAsync(skill.Id, ct);
@@ -53,7 +53,7 @@ public class SkillsController : ControllerBase
     }
 
     /// <summary>
-    /// Gets details of a specific skill.
+    /// Gets details of a specific tool.
     /// </summary>
     [HttpGet("{skillId}")]
     public async Task<IActionResult> GetSkill(string skillId, CancellationToken ct)
@@ -61,7 +61,7 @@ public class SkillsController : ControllerBase
         var skill = _registry.Get(skillId);
         if (skill == null)
         {
-            return NotFound(new { error = $"Skill '{skillId}' not found" });
+            return NotFound(new { error = $"Tool '{skillId}' not found" });
         }
 
         var isConfigured = await _registry.IsConfiguredAsync(skillId, ct);
@@ -84,7 +84,7 @@ public class SkillsController : ControllerBase
     }
 
     /// <summary>
-    /// Gets the configuration schema for a skill.
+    /// Gets the configuration schema for a tool.
     /// </summary>
     [HttpGet("{skillId}/config/schema")]
     public async Task<IActionResult> GetConfigSchema(string skillId, CancellationToken ct)
@@ -94,7 +94,7 @@ public class SkillsController : ControllerBase
             var schema = await _configService.GetSchemaAsync(skillId, ct);
             return Ok(new
             {
-                skillId = schema.SkillId,
+                skillId = schema.ToolId,
                 fields = schema.Fields.Select(f => new
                 {
                     key = f.Key,
@@ -110,12 +110,12 @@ public class SkillsController : ControllerBase
         }
         catch (InvalidOperationException)
         {
-            return NotFound(new { error = $"Skill '{skillId}' not found" });
+            return NotFound(new { error = $"Tool '{skillId}' not found" });
         }
     }
 
     /// <summary>
-    /// Gets the current configuration for a skill (without sensitive values).
+    /// Gets the current configuration for a tool (without sensitive values).
     /// </summary>
     [HttpGet("{skillId}/config")]
     public async Task<IActionResult> GetConfig(string skillId, CancellationToken ct)
@@ -144,12 +144,12 @@ public class SkillsController : ControllerBase
         }
         catch (InvalidOperationException)
         {
-            return NotFound(new { error = $"Skill '{skillId}' not found" });
+            return NotFound(new { error = $"Tool '{skillId}' not found" });
         }
     }
 
     /// <summary>
-    /// Updates configuration for a skill.
+    /// Updates configuration for a tool.
     /// </summary>
     [HttpPut("{skillId}/config")]
     public async Task<IActionResult> UpdateConfig(
@@ -161,7 +161,7 @@ public class SkillsController : ControllerBase
         {
             await _configService.UpdateConfigAsync(skillId, request.Values, ct);
 
-            // Re-initialize the skill with new config
+            // Re-initialize the tool with new config
             var skill = _registry.Get(skillId);
             if (skill != null)
             {
@@ -177,7 +177,7 @@ public class SkillsController : ControllerBase
         }
         catch (InvalidOperationException)
         {
-            return NotFound(new { error = $"Skill '{skillId}' not found" });
+            return NotFound(new { error = $"Tool '{skillId}' not found" });
         }
     }
 
@@ -195,7 +195,7 @@ public class SkillsController : ControllerBase
         {
             await _configService.SetConfigValueAsync(skillId, key, request.Value, ct);
 
-            // Re-initialize the skill so runtime state reflects latest config updates.
+            // Re-initialize the tool so runtime state reflects latest config updates.
             var skill = _registry.Get(skillId);
             if (skill != null)
             {
@@ -224,13 +224,13 @@ public class SkillsController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error deleting config {Key} for skill {SkillId}", key, skillId);
+            _logger.LogError(ex, "Error deleting config {Key} for tool {ToolId}", key, skillId);
             return StatusCode(500, new { error = "Failed to delete configuration" });
         }
     }
 
     /// <summary>
-    /// Validates a skill's configuration.
+    /// Validates a tool's configuration.
     /// </summary>
     [HttpPost("{skillId}/config/validate")]
     public async Task<IActionResult> ValidateConfig(string skillId, CancellationToken ct)
@@ -246,12 +246,12 @@ public class SkillsController : ControllerBase
         }
         catch (InvalidOperationException)
         {
-            return NotFound(new { error = $"Skill '{skillId}' not found" });
+            return NotFound(new { error = $"Tool '{skillId}' not found" });
         }
     }
 
     /// <summary>
-    /// Executes a skill tool directly (mainly for testing).
+    /// Executes a tool directly (mainly for testing).
     /// </summary>
     [HttpPost("{skillId}/execute")]
     public async Task<IActionResult> ExecuteTool(
@@ -262,16 +262,16 @@ public class SkillsController : ControllerBase
         var skill = _registry.Get(skillId);
         if (skill == null)
         {
-            return NotFound(new { error = $"Skill '{skillId}' not found" });
+            return NotFound(new { error = $"Tool '{skillId}' not found" });
         }
 
         var tools = skill.GetTools();
         if (!tools.Any(t => t.Name == request.ToolName))
         {
-            return BadRequest(new { error = $"Tool '{request.ToolName}' not found in skill '{skillId}'" });
+            return BadRequest(new { error = $"Tool '{request.ToolName}' not found in tool '{skillId}'" });
         }
 
-        var context = new SkillContext
+        var context = new ToolContext
         {
             ToolName = request.ToolName,
             Arguments = request.Arguments ?? "{}"
@@ -288,12 +288,12 @@ public class SkillsController : ControllerBase
     }
 
     /// <summary>
-    /// Gets all tools from all skills.
+    /// Gets all tools from all registered tools.
     /// </summary>
     [HttpGet("tools")]
     public IActionResult ListAllTools()
     {
-        var tools = _skillRegistry.GetAllTools().Select(t => new
+        var tools = _toolRegistry.GetAllTools().Select(t => new
         {
             name = t.Name,
             description = t.Description,

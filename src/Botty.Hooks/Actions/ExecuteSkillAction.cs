@@ -6,17 +6,17 @@ using Microsoft.Extensions.Logging;
 namespace Botty.Hooks.Actions;
 
 /// <summary>
-/// Executes a skill tool by name with arguments from config (supports template substitution).
+/// Executes a tool by name with arguments from config (supports template substitution).
 /// </summary>
-public class ExecuteSkillAction : IHookAction
+public class ExecuteToolAction : IHookAction
 {
     public string Type => "execute_skill";
-    private readonly ISkillRegistry _skillRegistry;
-    private readonly ILogger<ExecuteSkillAction> _logger;
+    private readonly IToolRegistry _toolRegistry;
+    private readonly ILogger<ExecuteToolAction> _logger;
 
-    public ExecuteSkillAction(ISkillRegistry skillRegistry, ILogger<ExecuteSkillAction> logger)
+    public ExecuteToolAction(IToolRegistry toolRegistry, ILogger<ExecuteToolAction> logger)
     {
-        _skillRegistry = skillRegistry;
+        _toolRegistry = toolRegistry;
         _logger = logger;
     }
 
@@ -29,10 +29,10 @@ public class ExecuteSkillAction : IHookAction
             return new ActionResult { Success = false, Error = "Missing toolName in action config" };
 
         arguments = ActionHelpers.SubstituteVariables(arguments, context);
-        var result = await _skillRegistry.ExecuteToolAsync(toolName, arguments, ct);
+        var result = await _toolRegistry.ExecuteToolAsync(toolName, arguments, ct);
         if (!result.Success)
         {
-            _logger.LogWarning("ExecuteSkill {Tool} failed: {Error}", toolName, result.Error);
+            _logger.LogWarning("ExecuteTool {Tool} failed: {Error}", toolName, result.Error);
             return new ActionResult { Success = false, Error = result.Error };
         }
         return new ActionResult { Success = true, Output = result.Result };
