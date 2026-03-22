@@ -236,7 +236,7 @@ resource "google_sql_database_instance" "postgres" {
 
   settings {
     tier              = var.db_tier
-    availability_type = var.environment == "production" ? "REGIONAL" : "ZONAL"
+    availability_type = "ZONAL"
     disk_size         = var.db_disk_size
     disk_type         = "PD_SSD"
 
@@ -247,7 +247,7 @@ resource "google_sql_database_instance" "postgres" {
 
     backup_configuration {
       enabled                        = true
-      point_in_time_recovery_enabled = var.environment == "production"
+      point_in_time_recovery_enabled = false
       start_time                     = "03:00"
     }
 
@@ -257,7 +257,7 @@ resource "google_sql_database_instance" "postgres" {
     }
   }
 
-  deletion_protection = var.environment == "production"
+  deletion_protection = true
 
   depends_on = [google_service_networking_connection.private_vpc_connection]
 }
