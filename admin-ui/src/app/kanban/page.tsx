@@ -16,7 +16,7 @@ import { KanbanColumn } from '@/components/kanban/column';
 import { KanbanCard } from '@/components/kanban/card';
 import { TaskModal } from '@/components/kanban/task-modal';
 import { Button } from '@/components/ui/button';
-import { kanbanApi, KanbanTask } from '@/lib/api';
+import { kanbanApi, KanbanTask, CreateTaskRequest } from '@/lib/api';
 import { Plus, RefreshCw } from 'lucide-react';
 
 const LANES = [
@@ -116,7 +116,7 @@ export default function KanbanPage() {
     }
   };
 
-  const handleCreateTask = async (data: { title: string; description?: string }) => {
+  const handleCreateTask = async (data: CreateTaskRequest) => {
     try {
       const task = await kanbanApi.createTask(data);
       setTasks((prev) => [...prev, task]);

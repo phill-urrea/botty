@@ -1,6 +1,6 @@
 # Production Environment Configuration
 
-project_id  = "your-gcp-project-id"  # Replace with your GCP project ID
+project_id  = "botty-projects"
 region      = "us-central1"
 app_name    = "botty"
 environment = "production"

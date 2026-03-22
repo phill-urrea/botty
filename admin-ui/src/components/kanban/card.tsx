@@ -5,7 +5,7 @@ import { KanbanTask } from '@/lib/api';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { cn, formatRelativeTime, truncate } from '@/lib/utils';
-import { Check, X, User, Bot, AlertCircle } from 'lucide-react';
+import { Check, X, User, Bot, AlertCircle, Bug } from 'lucide-react';
 
 interface KanbanCardProps {
   task: KanbanTask;
@@ -46,16 +46,24 @@ export function KanbanCard({
       {...listeners}
       {...attributes}
       className={cn(
-        'bg-white rounded-lg border border-gray-200 p-3 cursor-pointer shadow-sm',
-        'hover:border-gray-300 hover:shadow transition-all',
+        'bg-white rounded-lg border p-3 cursor-pointer shadow-sm',
+        'hover:shadow transition-all',
+        task.type === 'BugReport'
+          ? 'border-red-200 hover:border-red-300'
+          : 'border-gray-200 hover:border-gray-300',
         isDragging && 'opacity-50 shadow-lg rotate-2'
       )}
       onClick={onClick}
     >
       <div className="flex items-start justify-between gap-2 mb-2">
-        <h4 className="font-medium text-sm text-gray-900 line-clamp-2">
-          {task.title}
-        </h4>
+        <div className="flex items-start gap-1.5">
+          {task.type === 'BugReport' && (
+            <Bug className="h-4 w-4 text-red-500 flex-shrink-0 mt-0.5" />
+          )}
+          <h4 className="font-medium text-sm text-gray-900 line-clamp-2">
+            {task.title}
+          </h4>
+        </div>
         {task.priority !== 'Normal' && (
           <Badge variant={priorityVariant} className="flex-shrink-0">
             {task.priority}

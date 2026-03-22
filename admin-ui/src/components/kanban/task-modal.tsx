@@ -1,13 +1,25 @@
 'use client';
 
 import { useState } from 'react';
-import { KanbanTask } from '@/lib/api';
+import { KanbanTask, CreateTaskRequest } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { formatDate } from '@/lib/utils';
-import { X, Check, Trash2, AlertCircle, User, Bot } from 'lucide-react';
+import { X, Check, Trash2, AlertCircle, User, Bot, Bug } from 'lucide-react';
+
+const TASK_TYPES = [
+  { value: 'General', label: 'General' },
+  { value: 'BugReport', label: 'Bug Report' },
+] as const;
+
+const PRIORITIES = [
+  { value: 'Low', label: 'Low' },
+  { value: 'Normal', label: 'Normal' },
+  { value: 'High', label: 'High' },
+  { value: 'Urgent', label: 'Urgent' },
+] as const;
 
 interface TaskModalProps {
   task?: KanbanTask;
@@ -15,7 +27,7 @@ interface TaskModalProps {
   onApprove?: () => void;
   onReject?: (reason?: string) => void;
   onDelete?: () => void;
-  onCreate?: (data: { title: string; description?: string }) => void;
+  onCreate?: (data: CreateTaskRequest) => void;
 }
 
 export function TaskModal({
@@ -28,15 +40,24 @@ export function TaskModal({
 }: TaskModalProps) {
   const [title, setTitle] = useState(task?.title || '');
   const [description, setDescription] = useState(task?.description || '');
+  const [taskType, setTaskType] = useState('General');
+  const [priority, setPriority] = useState('Normal');
   const [rejectReason, setRejectReason] = useState('');
   const [showRejectInput, setShowRejectInput] = useState(false);
 
   const isNew = !task;
+  const isBugReport = taskType === 'BugReport';
   const needsApproval = task?.lane === 'NeedsApproval';
 
   const handleSubmit = () => {
     if (isNew && onCreate) {
-      onCreate({ title, description: description || undefined });
+      onCreate({
+        title,
+        description: description || undefined,
+        type: taskType,
+        assignee: isBugReport ? 'Assistant' : undefined,
+        priority,
+      });
     }
   };
 
@@ -46,7 +67,7 @@ export function TaskModal({
       <div className="relative bg-white rounded-lg shadow-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between p-4 border-b">
           <h2 className="text-lg font-semibold">
-            {isNew ? 'Create Task' : 'Task Details'}
+            {isNew ? (isBugReport ? 'Report Bug' : 'Create Task') : 'Task Details'}
           </h2>
           <Button variant="ghost" size="icon" onClick={onClose}>
             <X className="h-4 w-4" />
@@ -56,25 +77,77 @@ export function TaskModal({
         <div className="p-4 space-y-4">
           {isNew ? (
             <>
+              <div className="flex gap-3">
+                <div className="flex-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Type
+                  </label>
+                  <select
+                    value={taskType}
+                    onChange={(e) => setTaskType(e.target.value)}
+                    className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  >
+                    {TASK_TYPES.map((t) => (
+                      <option key={t.value} value={t.value}>
+                        {t.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Priority
+                  </label>
+                  <select
+                    value={priority}
+                    onChange={(e) => setPriority(e.target.value)}
+                    className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  >
+                    {PRIORITIES.map((p) => (
+                      <option key={p.value} value={p.value}>
+                        {p.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {isBugReport && (
+                <div className="p-3 bg-red-50 rounded-lg border border-red-200 text-sm text-red-700">
+                  <div className="flex items-center gap-2 font-medium mb-1">
+                    <Bug className="h-4 w-4" />
+                    Bug Report
+                  </div>
+                  <p>
+                    This will be assigned to the assistant and require your approval before
+                    it investigates, fixes, and deploys the change automatically.
+                  </p>
+                </div>
+              )}
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Title
+                  {isBugReport ? 'Bug Summary' : 'Title'}
                 </label>
                 <Input
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
-                  placeholder="Task title"
+                  placeholder={isBugReport ? 'Brief summary of the bug' : 'Task title'}
                 />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Description
+                  {isBugReport ? 'Details & Reproduction Steps' : 'Description'}
                 </label>
                 <Textarea
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Task description (optional)"
-                  rows={4}
+                  placeholder={
+                    isBugReport
+                      ? 'Describe the bug, expected vs actual behavior, steps to reproduce, and affected component...'
+                      : 'Task description (optional)'
+                  }
+                  rows={isBugReport ? 6 : 4}
                 />
               </div>
             </>
@@ -152,7 +225,7 @@ export function TaskModal({
                 Cancel
               </Button>
               <Button onClick={handleSubmit} disabled={!title.trim()}>
-                Create Task
+                {isBugReport ? 'Submit Bug Report' : 'Create Task'}
               </Button>
             </>
           ) : (

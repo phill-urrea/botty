@@ -9,17 +9,17 @@ COPY src/Botty.Hooks/Botty.Hooks.csproj src/Botty.Hooks/
 COPY src/Botty.Secrets/Botty.Secrets.csproj src/Botty.Secrets/
 COPY src/Botty.Memory/Botty.Memory.csproj src/Botty.Memory/
 COPY src/Botty.LLM/Botty.LLM.csproj src/Botty.LLM/
-COPY src/Botty.Skills/Botty.Skills.csproj src/Botty.Skills/
+COPY src/Botty.Tools/Botty.Tools.csproj src/Botty.Tools/
 COPY src/Botty.Messaging/Botty.Messaging.csproj src/Botty.Messaging/
 COPY src/Botty.Workflow/Botty.Workflow.csproj src/Botty.Workflow/
 COPY src/Botty.Scheduler/Botty.Scheduler.csproj src/Botty.Scheduler/
 COPY src/Botty.Infrastructure/Botty.Infrastructure.csproj src/Botty.Infrastructure/
 COPY src/Botty.Channels/Botty.Channels.csproj src/Botty.Channels/
+COPY src/Botty.Cli/Botty.Cli.csproj src/Botty.Cli/
 COPY src/Botty.Api/Botty.Api.csproj src/Botty.Api/
-COPY src/Botty.Skills.Tests/Botty.Skills.Tests.csproj src/Botty.Skills.Tests/
 
-# Restore dependencies
-RUN dotnet restore
+# Restore only the API project (skips test projects not in the image)
+RUN dotnet restore src/Botty.Api/Botty.Api.csproj
 
 # Copy source code
 COPY src/ src/

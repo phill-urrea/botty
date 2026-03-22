@@ -24,7 +24,8 @@ public class ApprovalService : IApprovalService
         TaskType.NewSkillCreation,
         TaskType.ShellCommand,
         TaskType.MemoryModification,
-        TaskType.CalendarChange
+        TaskType.CalendarChange,
+        TaskType.BugReport
     ];
 
     public ApprovalService(

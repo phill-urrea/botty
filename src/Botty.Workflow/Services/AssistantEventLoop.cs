@@ -165,6 +165,7 @@ public class AssistantEventLoop : BackgroundService
             TaskType.ShellCommand => await ExecuteShellCommandAsync(task, services, ct),
             TaskType.MemoryModification => await ExecuteMemoryModificationAsync(task, services, ct),
             TaskType.CalendarChange => await ExecuteCalendarChangeAsync(task, services, ct),
+            TaskType.BugReport => await ExecuteBugReportAsync(task, services, ct),
             _ => $"Unknown task type: {task.Type}"
         };
 
@@ -329,10 +330,15 @@ public class AssistantEventLoop : BackgroundService
         return Task.FromResult("New tool creation not yet implemented (Phase 6)");
     }
 
-    private Task<string> ExecuteShellCommandAsync(KanbanTask task, IServiceProvider services, CancellationToken ct)
+    private async Task<string> ExecuteShellCommandAsync(KanbanTask task, IServiceProvider services, CancellationToken ct)
     {
-        // Shell command execution will be implemented in Phase 6
-        return Task.FromResult("Shell command execution not yet implemented (Phase 6)");
+        var command = task.Description ?? task.Title;
+        var toolRegistry = services.GetRequiredService<IToolRegistry>();
+        var args = System.Text.Json.JsonSerializer.Serialize(new { command });
+        var result = await toolRegistry.ExecuteToolAsync("shell_execute", args, ct);
+        return result.Success
+            ? result.Result ?? "Shell command executed."
+            : $"Shell command failed: {result.Error}";
     }
 
     private Task<string> ExecuteMemoryModificationAsync(KanbanTask task, IServiceProvider services, CancellationToken ct)
@@ -345,6 +351,43 @@ public class AssistantEventLoop : BackgroundService
     {
         // Calendar integration in Phase 6
         return Task.FromResult("Calendar change not yet implemented (Phase 6)");
+    }
+
+    private async Task<string> ExecuteBugReportAsync(KanbanTask task, IServiceProvider services, CancellationToken ct)
+    {
+        var bugTitle = task.Title;
+        var bugDetails = task.Description ?? "No additional details provided.";
+
+        var bugFixTask = new KanbanTask
+        {
+            Id = task.Id,
+            Title = task.Title,
+            Description = $"""
+                You are an autonomous agent fixing a bug in the botty codebase.
+
+                Bug: {bugTitle}
+                Details: {bugDetails}
+
+                Execute these steps in order:
+                1. Run `git pull origin main` to get the latest code
+                2. Investigate the bug by reading relevant files and searching the codebase
+                3. Write the fix — edit the minimum number of files needed
+                4. Run `dotnet test` in the src directory to verify the fix
+                5. If tests pass, run `./scripts/deploy.sh dev latest` to build and deploy
+                6. Summarize what you changed and the deployment result
+                """,
+            Type = TaskType.BugReport,
+            UserId = task.UserId,
+            ConversationId = task.ConversationId,
+            PendingActionData = task.PendingActionData,
+        };
+
+        var executor = services.GetRequiredService<LlmTaskExecutor>();
+        var result = await executor.ExecuteAsync(bugFixTask, ct);
+
+        await DeliverToWhatsAppSelfChatAsync($"Bug Fix: {bugTitle}", result, services, ct);
+
+        return result;
     }
 
     // Pending action execution methods
@@ -424,11 +467,25 @@ public class AssistantEventLoop : BackgroundService
         return $"Message sent via {channelId} to {chatId}. MessageId={sendResult.MessageId ?? "n/a"}";
     }
 
-    private Task<string> ExecuteShellFromActionAsync(
+    private async Task<string> ExecuteShellFromActionAsync(
         PendingAction action, IServiceProvider services, CancellationToken ct)
     {
-        // Will execute shell command
-        return Task.FromResult($"Would execute: {action.Payload?.GetValueOrDefault("command", "unknown")}");
+        var command = action.Payload?.GetValueOrDefault("command")
+            ?? action.Payload?.GetValueOrDefault("script");
+        if (string.IsNullOrWhiteSpace(command))
+            return "Shell action missing command payload.";
+
+        var toolName = action.Payload?.ContainsKey("script") == true ? "shell_script" : "shell_execute";
+        var args = System.Text.Json.JsonSerializer.Serialize(
+            toolName == "shell_script"
+                ? new { script = command }
+                : (object)new { command });
+
+        var toolRegistry = services.GetRequiredService<IToolRegistry>();
+        var result = await toolRegistry.ExecuteToolAsync(toolName, args, ct);
+        return result.Success
+            ? result.Result ?? "Shell command executed."
+            : $"Shell command failed: {result.Error}";
     }
 
     private Task<string> ExecuteSystemChangeFromActionAsync(

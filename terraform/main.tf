@@ -118,11 +118,6 @@ resource "google_sql_database_instance" "postgres" {
       private_network = google_compute_network.vpc.id
     }
 
-    database_flags {
-      name  = "cloudsql.enable_pgvector"
-      value = "on"
-    }
-
     backup_configuration {
       enabled                        = true
       point_in_time_recovery_enabled = var.environment == "production"
@@ -325,11 +320,6 @@ resource "google_cloud_run_v2_service" "whatsapp" {
       }
 
       env {
-        name  = "PORT"
-        value = "8080"
-      }
-
-      env {
         name  = "BOTTY_API_URL"
         value = google_cloud_run_v2_service.api.uri
       }
@@ -344,18 +334,6 @@ resource "google_cloud_run_v2_service" "whatsapp" {
         value = "true"
       }
 
-      volume_mounts {
-        name       = "whatsapp-session"
-        mount_path = "/app/.wwebjs_auth"
-      }
-    }
-
-    volumes {
-      name = "whatsapp-session"
-      empty_dir {
-        medium     = "MEMORY"
-        size_limit = "512Mi"
-      }
     }
   }
 
@@ -431,4 +409,90 @@ resource "google_cloud_scheduler_job" "health_check" {
   }
 
   depends_on = [google_project_service.required_apis]
+}
+
+# --- Global HTTPS Load Balancer for custom domains ---
+
+resource "google_compute_region_network_endpoint_group" "admin_neg" {
+  name                  = "${var.app_name}-admin-neg"
+  network_endpoint_type = "SERVERLESS"
+  region                = var.region
+
+  cloud_run {
+    service = google_cloud_run_v2_service.admin.name
+  }
+}
+
+resource "google_compute_region_network_endpoint_group" "api_neg" {
+  name                  = "${var.app_name}-api-neg"
+  network_endpoint_type = "SERVERLESS"
+  region                = var.region
+
+  cloud_run {
+    service = google_cloud_run_v2_service.api.name
+  }
+}
+
+resource "google_compute_backend_service" "admin_backend" {
+  name                  = "${var.app_name}-admin-backend"
+  load_balancing_scheme = "EXTERNAL_MANAGED"
+
+  backend {
+    group = google_compute_region_network_endpoint_group.admin_neg.id
+  }
+}
+
+resource "google_compute_backend_service" "api_backend" {
+  name                  = "${var.app_name}-api-backend"
+  load_balancing_scheme = "EXTERNAL_MANAGED"
+
+  backend {
+    group = google_compute_region_network_endpoint_group.api_neg.id
+  }
+}
+
+resource "google_compute_url_map" "botty_url_map" {
+  name            = "${var.app_name}-url-map"
+  default_service = google_compute_backend_service.admin_backend.id
+
+  host_rule {
+    hosts        = ["bot.phill.ie"]
+    path_matcher = "admin"
+  }
+
+  host_rule {
+    hosts        = ["bot-api.phill.ie"]
+    path_matcher = "api"
+  }
+
+  path_matcher {
+    name            = "admin"
+    default_service = google_compute_backend_service.admin_backend.id
+  }
+
+  path_matcher {
+    name            = "api"
+    default_service = google_compute_backend_service.api_backend.id
+  }
+}
+
+resource "google_compute_managed_ssl_certificate" "botty_cert" {
+  name = "${var.app_name}-cert"
+
+  managed {
+    domains = ["bot.phill.ie", "bot-api.phill.ie"]
+  }
+}
+
+resource "google_compute_target_https_proxy" "botty_proxy" {
+  name             = "${var.app_name}-https-proxy"
+  url_map          = google_compute_url_map.botty_url_map.id
+  ssl_certificates = [google_compute_managed_ssl_certificate.botty_cert.id]
+}
+
+resource "google_compute_global_forwarding_rule" "botty_https" {
+  name                  = "${var.app_name}-https"
+  load_balancing_scheme = "EXTERNAL_MANAGED"
+  target                = google_compute_target_https_proxy.botty_proxy.id
+  port_range            = "443"
 }

@@ -43,5 +43,10 @@ public enum TaskType
     /// <summary>
     /// Task to create or modify calendar events.
     /// </summary>
-    CalendarChange
+    CalendarChange,
+
+    /// <summary>
+    /// Bug report that the assistant will investigate, fix, and deploy.
+    /// </summary>
+    BugReport
 }

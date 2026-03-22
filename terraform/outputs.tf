@@ -39,3 +39,8 @@ output "vpc_connector_id" {
   description = "VPC Access Connector ID"
   value       = google_vpc_access_connector.connector.id
 }
+
+output "lb_ip" {
+  description = "Global IP for bot.phill.ie and bot-api.phill.ie"
+  value       = google_compute_global_forwarding_rule.botty_https.ip_address
+}

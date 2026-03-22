@@ -11,7 +11,7 @@ namespace Botty.Workflow.Services;
 /// </summary>
 public class LlmTaskExecutor
 {
-    private const int MaxToolLoopIterations = 5;
+    private const int MaxToolLoopIterations = 20;
 
     private readonly IConversationOrchestrator _orchestrator;
     private readonly IToolRegistry _toolRegistry;

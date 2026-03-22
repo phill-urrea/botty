@@ -93,7 +93,7 @@ done
 echo -e "${GREEN}Setting up Workload Identity Federation...${NC}"
 POOL_NAME="github-pool"
 PROVIDER_NAME="github-provider"
-GITHUB_ORG="your-github-org"  # Replace with your GitHub org/username
+GITHUB_ORG="phill-urrea"
 
 # Create Workload Identity Pool
 gcloud iam workload-identity-pools create $POOL_NAME \

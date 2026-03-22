@@ -109,7 +109,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           build-args: |
-            NEXT_PUBLIC_API_URL=https://${{ env.APP_NAME }}-api-${{ secrets.GCP_PROJECT_ID }}.run.app
+            NEXT_PUBLIC_API_URL=https://bot-api.phill.ie
 
   # Deploy with Terraform
   deploy:
@@ -184,7 +184,7 @@ jobs:
       - name: Health check API
         run: |
           for i in {1..5}; do
-            response=$(curl -s -o /dev/null -w "%{http_code}" https://${{ env.APP_NAME }}-api-${{ secrets.GCP_PROJECT_ID }}.run.app/health)
+            response=$(curl -s -o /dev/null -w "%{http_code}" https://bot-api.phill.ie/health || echo "000")
             if [ "$response" == "200" ]; then
               echo "API health check passed!"
               exit 0
@@ -194,5 +194,3 @@ jobs:
           done
           echo "Health check failed"
           exit 1
-        env:
-          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}

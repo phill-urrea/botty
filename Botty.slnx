@@ -9,8 +9,9 @@
     <Project Path="src/Botty.Messaging/Botty.Messaging.csproj" />
     <Project Path="src/Botty.Scheduler/Botty.Scheduler.csproj" />
     <Project Path="src/Botty.Secrets/Botty.Secrets.csproj" />
-    <Project Path="src/Botty.Skills/Botty.Skills.csproj" />
-    <Project Path="src/Botty.Skills.Tests/Botty.Skills.Tests.csproj" />
+    <Project Path="src/Botty.Tools/Botty.Tools.csproj" />
+    <Project Path="src/Botty.Tools.Tests/Botty.Tools.Tests.csproj" />
+    <Project Path="src/Botty.Channels/Botty.Channels.csproj" />
     <Project Path="src/Botty.Workflow/Botty.Workflow.csproj" />
     <Project Path="src/Botty.Cli/Botty.Cli.csproj" />
   </Folder>
