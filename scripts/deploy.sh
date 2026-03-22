@@ -59,7 +59,7 @@ docker build -t "${REGISTRY}/whatsapp-bridge:${IMAGE_TAG}" \
 
 echo "  Building Admin UI..."
 docker build -t "${REGISTRY}/admin-ui:${IMAGE_TAG}" \
-  --build-arg NEXT_PUBLIC_API_URL=https://bot-api.phill.ie \
+  --build-arg NEXT_PUBLIC_API_URL=https://bot-api.phill.ie/api \
   -f "$ROOT_DIR/admin-ui/Dockerfile" \
   "$ROOT_DIR/admin-ui"
 
