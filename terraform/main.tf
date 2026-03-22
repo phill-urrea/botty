@@ -255,12 +255,21 @@ resource "google_sql_database_instance" "postgres" {
 
   deletion_protection = true
 
+  lifecycle {
+    prevent_destroy = true
+    ignore_changes  = all
+  }
+
   depends_on = [google_service_networking_connection.private_vpc_connection]
 }
 
 resource "google_sql_database" "botty" {
   name     = "botty"
   instance = google_sql_database_instance.postgres.name
+
+  lifecycle {
+    ignore_changes = all
+  }
 }
 
 resource "google_sql_user" "botty" {
