@@ -116,6 +116,18 @@ builder.Services.AddHostedService<ChannelAutoReplyService>();
 
 var app = builder.Build();
 
+// #region agent log
+{
+    var _dbgLogger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("DebugStartup");
+    var _dbgGcpProjectId = app.Configuration["GCP:ProjectId"];
+    var _dbgBridgeUrl = app.Configuration["WhatsAppBridge:BaseUrl"];
+    var _dbgChannelBridgeUrl = app.Configuration["Channels:WhatsApp:BridgeUrl"];
+    var _dbgChannelEnabled = app.Configuration["Channels:WhatsApp:Enabled"];
+    _dbgLogger.LogWarning("[DEBUG-6a3d7a] GCP:ProjectId={ProjectId}, WhatsAppBridge:BaseUrl={BridgeUrl}, Channels:WhatsApp:BridgeUrl={ChannelBridgeUrl}, Channels:WhatsApp:Enabled={ChannelEnabled}",
+        _dbgGcpProjectId ?? "(null)", _dbgBridgeUrl ?? "(null)", _dbgChannelBridgeUrl ?? "(null)", _dbgChannelEnabled ?? "(null)");
+}
+// #endregion
+
 // Initialize tools on startup
 await app.Services.InitializeToolsAsync();
 

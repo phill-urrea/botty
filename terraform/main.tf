@@ -350,7 +350,7 @@ resource "google_cloud_run_v2_service" "api" {
 
     vpc_access {
       connector = google_vpc_access_connector.connector.id
-      egress    = "PRIVATE_RANGES_ONLY"
+      egress    = "ALL_TRAFFIC"
     }
 
     containers {
@@ -386,6 +386,26 @@ resource "google_cloud_run_v2_service" "api" {
             version = "latest"
           }
         }
+      }
+
+      env {
+        name  = "GCP__ProjectId"
+        value = var.project_id
+      }
+
+      env {
+        name  = "WhatsAppBridge__BaseUrl"
+        value = google_cloud_run_v2_service.whatsapp.uri
+      }
+
+      env {
+        name  = "Channels__WhatsApp__Enabled"
+        value = "true"
+      }
+
+      env {
+        name  = "Channels__WhatsApp__BridgeUrl"
+        value = google_cloud_run_v2_service.whatsapp.uri
       }
 
       startup_probe {
@@ -527,6 +547,14 @@ resource "google_cloud_run_v2_service_iam_member" "admin_public" {
   project  = var.project_id
   location = var.region
   name     = google_cloud_run_v2_service.admin.name
+  role     = "roles/run.invoker"
+  member   = "allUsers"
+}
+
+resource "google_cloud_run_v2_service_iam_member" "whatsapp_internal" {
+  project  = var.project_id
+  location = var.region
+  name     = google_cloud_run_v2_service.whatsapp.name
   role     = "roles/run.invoker"
   member   = "allUsers"
 }

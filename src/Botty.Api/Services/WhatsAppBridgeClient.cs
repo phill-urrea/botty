@@ -25,6 +25,9 @@ public sealed class WhatsAppBridgeClient : IWhatsAppBridgeClient
     /// <inheritdoc />
     public async Task<BridgeStatusResult> GetStatusAsync(CancellationToken ct = default)
     {
+        // #region agent log
+        _logger.LogWarning("[DEBUG-6a3d7a] WhatsAppBridgeClient.GetStatusAsync BaseAddress={BaseAddress}", _httpClient.BaseAddress?.ToString() ?? "(null)");
+        // #endregion
         if (_httpClient.BaseAddress is null)
             return Disconnected();
 

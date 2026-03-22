@@ -30,6 +30,9 @@ public class GcpSecretStore : ISecretStore
         {
             var secretPath = GetSecretPath(key);
             var versionPath = $"{secretPath}/versions/latest";
+            // #region agent log
+            _logger.LogWarning("[DEBUG-6a3d7a] GetSecretAsync key={Key} projectId={ProjectId} secretPath={SecretPath}", key, _options.ProjectId ?? "(null)", secretPath);
+            // #endregion
             
             var response = await _client.AccessSecretVersionAsync(versionPath, ct);
             var secretValue = response.Payload.Data.ToStringUtf8();
