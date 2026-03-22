@@ -94,7 +94,7 @@ import {
 
 import {
   to = google_sql_user.botty
-  id = "botty.%.botty-db"
+  id = "botty-projects/botty-db/botty"
 }
 
 import {
@@ -271,11 +271,19 @@ resource "google_sql_user" "botty" {
   name     = "botty"
   instance = google_sql_database_instance.postgres.name
   password = random_password.db_password.result
+
+  lifecycle {
+    ignore_changes = [password]
+  }
 }
 
 resource "random_password" "db_password" {
   length  = 32
   special = false
+
+  lifecycle {
+    ignore_changes = [result]
+  }
 }
 
 # Secret Manager secrets
@@ -289,10 +297,8 @@ resource "google_secret_manager_secret" "db_password" {
   depends_on = [google_project_service.required_apis]
 }
 
-resource "google_secret_manager_secret_version" "db_password" {
-  secret      = google_secret_manager_secret.db_password.id
-  secret_data = random_password.db_password.result
-}
+# Secret versions are managed outside Terraform (already populated)
+# Adding new versions here would overwrite existing credentials
 
 resource "google_secret_manager_secret" "anthropic_api_key" {
   secret_id = "${var.app_name}-anthropic-api-key"
@@ -412,10 +418,7 @@ resource "google_secret_manager_secret" "db_connection_string" {
   depends_on = [google_project_service.required_apis]
 }
 
-resource "google_secret_manager_secret_version" "db_connection_string" {
-  secret      = google_secret_manager_secret.db_connection_string.id
-  secret_data = "Host=${google_sql_database_instance.postgres.private_ip_address};Database=botty;Username=botty;Password=${random_password.db_password.result}"
-}
+# Connection string secret version is managed outside Terraform (already populated)
 
 # Cloud Run - WhatsApp Bridge Service
 resource "google_cloud_run_v2_service" "whatsapp" {
