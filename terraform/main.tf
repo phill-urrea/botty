@@ -177,6 +177,11 @@ resource "google_secret_manager_secret" "anthropic_api_key" {
   depends_on = [google_project_service.required_apis]
 }
 
+import {
+  to = google_service_account.cloudrun
+  id = "projects/botty-projects/serviceAccounts/botty-cloudrun@botty-projects.iam.gserviceaccount.com"
+}
+
 # Service Account for Cloud Run
 resource "google_service_account" "cloudrun" {
   account_id   = "${var.app_name}-cloudrun"
@@ -474,6 +479,11 @@ resource "google_compute_url_map" "botty_url_map" {
     name            = "api"
     default_service = google_compute_backend_service.api_backend.id
   }
+}
+
+import {
+  to = google_compute_managed_ssl_certificate.botty_cert
+  id = "projects/botty-projects/global/sslCertificates/botty-cert"
 }
 
 resource "google_compute_managed_ssl_certificate" "botty_cert" {
