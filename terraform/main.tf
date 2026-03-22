@@ -28,6 +28,12 @@ provider "google-beta" {
   region  = var.region
 }
 
+data "google_cloud_run_v2_service" "whatsapp_data" {
+  name     = "${var.app_name}-whatsapp"
+  location = var.region
+  project  = var.project_id
+}
+
 # Enable required APIs
 resource "google_project_service" "required_apis" {
   for_each = toset([
@@ -395,7 +401,7 @@ resource "google_cloud_run_v2_service" "api" {
 
       env {
         name  = "WhatsAppBridge__BaseUrl"
-        value = google_cloud_run_v2_service.whatsapp.uri
+        value = data.google_cloud_run_v2_service.whatsapp_data.uri
       }
 
       env {
@@ -405,7 +411,7 @@ resource "google_cloud_run_v2_service" "api" {
 
       env {
         name  = "Channels__WhatsApp__BridgeUrl"
-        value = google_cloud_run_v2_service.whatsapp.uri
+        value = data.google_cloud_run_v2_service.whatsapp_data.uri
       }
 
       startup_probe {
