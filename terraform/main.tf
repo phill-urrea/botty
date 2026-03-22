@@ -15,11 +15,7 @@ terraform {
     }
   }
 
-  # Uncomment to use GCS backend for state storage
-  # backend "gcs" {
-  #   bucket = "botty-terraform-state"
-  #   prefix = "terraform/state"
-  # }
+  backend "gcs" {}
 }
 
 provider "google" {
