@@ -35,6 +35,7 @@ provider "google-beta" {
 # Enable required APIs
 resource "google_project_service" "required_apis" {
   for_each = toset([
+    "cloudresourcemanager.googleapis.com",
     "run.googleapis.com",
     "sqladmin.googleapis.com",
     "secretmanager.googleapis.com",
@@ -48,6 +49,132 @@ resource "google_project_service" "required_apis" {
   project            = var.project_id
   service            = each.value
   disable_on_destroy = false
+}
+
+# Import blocks for pre-existing GCP resources
+import {
+  to = google_compute_network.vpc
+  id = "projects/botty-projects/global/networks/botty-vpc"
+}
+
+import {
+  to = google_compute_subnetwork.subnet
+  id = "projects/botty-projects/regions/us-central1/subnetworks/botty-subnet"
+}
+
+import {
+  to = google_compute_global_address.private_ip_range
+  id = "projects/botty-projects/global/addresses/botty-private-ip"
+}
+
+import {
+  to = google_service_networking_connection.private_vpc_connection
+  id = "projects/botty-projects/global/networks/botty-vpc:servicenetworking.googleapis.com"
+}
+
+import {
+  to = google_vpc_access_connector.connector
+  id = "projects/botty-projects/locations/us-central1/connectors/botty-connector"
+}
+
+import {
+  to = google_artifact_registry_repository.repo
+  id = "projects/botty-projects/locations/us-central1/repositories/botty"
+}
+
+import {
+  to = google_sql_database_instance.postgres
+  id = "projects/botty-projects/instances/botty-db"
+}
+
+import {
+  to = google_sql_database.botty
+  id = "projects/botty-projects/instances/botty-db/databases/botty"
+}
+
+import {
+  to = google_sql_user.botty
+  id = "botty.%.botty-db"
+}
+
+import {
+  to = google_secret_manager_secret.db_password
+  id = "projects/278776623981/secrets/botty-db-password"
+}
+
+import {
+  to = google_secret_manager_secret.anthropic_api_key
+  id = "projects/278776623981/secrets/botty-anthropic-api-key"
+}
+
+import {
+  to = google_secret_manager_secret.db_connection_string
+  id = "projects/278776623981/secrets/botty-db-connection-string"
+}
+
+import {
+  to = google_cloud_run_v2_service.api
+  id = "projects/botty-projects/locations/us-central1/services/botty-api"
+}
+
+import {
+  to = google_cloud_run_v2_service.whatsapp
+  id = "projects/botty-projects/locations/us-central1/services/botty-whatsapp"
+}
+
+import {
+  to = google_cloud_run_v2_service.admin
+  id = "projects/botty-projects/locations/us-central1/services/botty-admin"
+}
+
+import {
+  to = google_compute_region_network_endpoint_group.admin_neg
+  id = "projects/botty-projects/regions/us-central1/networkEndpointGroups/botty-admin-neg"
+}
+
+import {
+  to = google_compute_region_network_endpoint_group.api_neg
+  id = "projects/botty-projects/regions/us-central1/networkEndpointGroups/botty-api-neg"
+}
+
+import {
+  to = google_compute_backend_service.admin_backend
+  id = "projects/botty-projects/global/backendServices/botty-admin-backend"
+}
+
+import {
+  to = google_compute_backend_service.api_backend
+  id = "projects/botty-projects/global/backendServices/botty-api-backend"
+}
+
+import {
+  to = google_compute_url_map.botty_url_map
+  id = "projects/botty-projects/global/urlMaps/botty-url-map"
+}
+
+import {
+  to = google_compute_target_https_proxy.botty_proxy
+  id = "projects/botty-projects/global/targetHttpsProxies/botty-https-proxy"
+}
+
+import {
+  to = google_compute_global_forwarding_rule.botty_https
+  id = "projects/botty-projects/global/forwardingRules/botty-https"
+}
+
+import {
+  to = google_service_account.cloudrun
+  id = "projects/botty-projects/serviceAccounts/botty-cloudrun@botty-projects.iam.gserviceaccount.com"
+}
+
+import {
+  to = google_compute_managed_ssl_certificate.botty_cert
+  id = "projects/botty-projects/global/sslCertificates/botty-cert"
+}
+
+import {
+  to = google_cloud_scheduler_job.health_check
+  id = "projects/botty-projects/locations/us-central1/jobs/botty-health-check"
 }
 
 # VPC Network for private connections
@@ -175,11 +302,6 @@ resource "google_secret_manager_secret" "anthropic_api_key" {
   }
 
   depends_on = [google_project_service.required_apis]
-}
-
-import {
-  to = google_service_account.cloudrun
-  id = "projects/botty-projects/serviceAccounts/botty-cloudrun@botty-projects.iam.gserviceaccount.com"
 }
 
 # Service Account for Cloud Run
@@ -479,11 +601,6 @@ resource "google_compute_url_map" "botty_url_map" {
     name            = "api"
     default_service = google_compute_backend_service.api_backend.id
   }
-}
-
-import {
-  to = google_compute_managed_ssl_certificate.botty_cert
-  id = "projects/botty-projects/global/sslCertificates/botty-cert"
 }
 
 resource "google_compute_managed_ssl_certificate" "botty_cert" {
