@@ -59,10 +59,19 @@ public class ChannelInitializationService : IHostedService
             
             _logger.LogInformation("Registered 4 channel plugins");
             
-            // Initialize all enabled channels
-            await _registry.InitializeAllAsync(cancellationToken);
-            
-            _logger.LogInformation("Channel initialization complete");
+            // Initialize channels in the background so the app can start serving health checks
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await _registry.InitializeAllAsync(cancellationToken);
+                    _logger.LogInformation("Channel initialization complete");
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error during background channel initialization");
+                }
+            }, cancellationToken);
         }
         catch (Exception ex)
         {
