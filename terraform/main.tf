@@ -356,7 +356,7 @@ resource "google_cloud_run_v2_service" "api" {
 
     vpc_access {
       connector = google_vpc_access_connector.connector.id
-      egress    = "ALL_TRAFFIC"
+      egress    = "PRIVATE_RANGES_ONLY"
     }
 
     containers {
@@ -455,7 +455,7 @@ resource "google_secret_manager_secret" "db_connection_string" {
 resource "google_cloud_run_v2_service" "whatsapp" {
   name     = "${var.app_name}-whatsapp"
   location = var.region
-  ingress  = "INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER"
+  ingress  = "INGRESS_TRAFFIC_ALL"
 
   template {
     service_account = google_service_account.cloudrun.email
