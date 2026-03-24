@@ -334,6 +334,12 @@ resource "google_project_iam_member" "cloudrun_secretmanager" {
   member  = "serviceAccount:${google_service_account.cloudrun.email}"
 }
 
+resource "google_project_iam_member" "cloudrun_secretmanager_admin" {
+  project = var.project_id
+  role    = "roles/secretmanager.admin"
+  member  = "serviceAccount:${google_service_account.cloudrun.email}"
+}
+
 resource "google_project_iam_member" "cloudrun_cloudsql" {
   project = var.project_id
   role    = "roles/cloudsql.client"
@@ -458,7 +464,8 @@ resource "google_cloud_run_v2_service" "whatsapp" {
   ingress  = "INGRESS_TRAFFIC_ALL"
 
   template {
-    service_account = google_service_account.cloudrun.email
+    service_account       = google_service_account.cloudrun.email
+    execution_environment = "EXECUTION_ENVIRONMENT_GEN2"
 
     scaling {
       min_instance_count = 1  # WhatsApp needs persistent connection
