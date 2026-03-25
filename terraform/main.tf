@@ -662,6 +662,11 @@ resource "google_cloud_run_v2_service" "admin" {
       }
 
       env {
+        name  = "AUTH_URL"
+        value = "https://bot.phill.ie"
+      }
+
+      env {
         name  = "ALLOWED_EMAIL"
         value = var.admin_allowed_email
       }
