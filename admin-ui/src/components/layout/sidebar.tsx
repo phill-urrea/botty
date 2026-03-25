@@ -13,6 +13,7 @@ import {
   Bot,
   Radio,
   Webhook,
+  LogOut,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -30,7 +31,7 @@ const navigation = [
   { name: 'Settings', href: '/settings', icon: Settings },
 ];
 
-export function Sidebar() {
+export function Sidebar({ userEmail }: { userEmail?: string }) {
   const pathname = usePathname();
 
   return (
@@ -68,9 +69,23 @@ export function Sidebar() {
         })}
       </nav>
       <div className="border-t border-gray-800 p-4">
-        <div className="flex items-center">
-          <div className="h-2 w-2 rounded-full bg-green-400" />
-          <span className="ml-2 text-sm text-gray-400">API Connected</span>
+        {userEmail && (
+          <p className="mb-2 truncate text-xs text-gray-500">{userEmail}</p>
+        )}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center">
+            <div className="h-2 w-2 rounded-full bg-green-400" />
+            <span className="ml-2 text-sm text-gray-400">Connected</span>
+          </div>
+          <form action="/api/auth/signout" method="post">
+            <button
+              type="submit"
+              className="text-gray-500 transition-colors hover:text-gray-300"
+              title="Sign out"
+            >
+              <LogOut className="h-4 w-4" />
+            </button>
+          </form>
         </div>
       </div>
     </div>

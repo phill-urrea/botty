@@ -1,7 +1,7 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api';
+const PROXY_BASE = '/api/proxy';
 
 async function fetchApi<T>(endpoint: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE}${endpoint}`, {
+  const response = await fetch(`${PROXY_BASE}${endpoint}`, {
     ...options,
     headers: {
       'Content-Type': 'application/json',

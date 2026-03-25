@@ -167,6 +167,36 @@ app.Use(async (context, next) =>
     await next();
 });
 
+// API key authentication middleware
+var apiKey = app.Configuration["Admin:ApiKey"];
+if (!string.IsNullOrEmpty(apiKey))
+{
+    app.Use(async (context, next) =>
+    {
+        var path = context.Request.Path.Value ?? "";
+
+        var isExempt = path == "/health"
+            || path == "/api/health"
+            || path.StartsWith("/ws/")
+            || path.StartsWith("/api/webhooks/")
+            || path.StartsWith("/api/channels/whatsapp/webhook")
+            || path.StartsWith("/api/oauth/callback");
+
+        if (!isExempt)
+        {
+            var providedKey = context.Request.Headers["X-Api-Key"].FirstOrDefault();
+            if (providedKey != apiKey)
+            {
+                context.Response.StatusCode = 401;
+                await context.Response.WriteAsJsonAsync(new { error = "Unauthorized" });
+                return;
+            }
+        }
+
+        await next();
+    });
+}
+
 app.MapControllers();
 
 // Health check endpoint (also under /api for frontend)

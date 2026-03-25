@@ -72,3 +72,25 @@ variable "admin_max_instances" {
   type        = number
   default     = 5
 }
+
+# Authentication settings
+variable "admin_allowed_email" {
+  description = "Email address allowed to access the admin UI (leave empty to allow any Google user)"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "auth_google_client_id" {
+  description = "Google OAuth Client ID for admin UI authentication"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "auth_google_client_secret" {
+  description = "Google OAuth Client Secret for admin UI authentication"
+  type        = string
+  default     = ""
+  sensitive   = true
+}

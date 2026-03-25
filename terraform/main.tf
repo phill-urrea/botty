@@ -322,6 +322,69 @@ resource "google_secret_manager_secret" "anthropic_api_key" {
   depends_on = [google_project_service.required_apis]
 }
 
+# --- Authentication secrets ---
+
+resource "random_password" "admin_api_key" {
+  length  = 48
+  special = false
+
+  lifecycle {
+    ignore_changes = [result]
+  }
+}
+
+resource "random_password" "auth_secret" {
+  length  = 48
+  special = false
+
+  lifecycle {
+    ignore_changes = [result]
+  }
+}
+
+resource "google_secret_manager_secret" "admin_api_key" {
+  secret_id = "${var.app_name}-admin-api-key"
+
+  replication {
+    auto {}
+  }
+
+  depends_on = [google_project_service.required_apis]
+}
+
+resource "google_secret_manager_secret_version" "admin_api_key" {
+  secret      = google_secret_manager_secret.admin_api_key.id
+  secret_data = random_password.admin_api_key.result
+
+  lifecycle {
+    ignore_changes = [secret_data]
+  }
+}
+
+resource "google_secret_manager_secret" "auth_secret" {
+  secret_id = "${var.app_name}-auth-secret"
+
+  replication {
+    auto {}
+  }
+
+  depends_on = [google_project_service.required_apis]
+}
+
+resource "google_secret_manager_secret_version" "auth_secret" {
+  secret      = google_secret_manager_secret.auth_secret.id
+  secret_data = random_password.auth_secret.result
+
+  lifecycle {
+    ignore_changes = [secret_data]
+  }
+}
+
+# Google OAuth client ID and secret for admin UI authentication
+# These are provided via Terraform variables and passed directly to Cloud Run.
+# The user must create an OAuth 2.0 Client ID in the GCP Console first:
+#   Authorized redirect URI: https://bot.phill.ie/api/auth/callback/google
+
 # Service Account for Cloud Run
 resource "google_service_account" "cloudrun" {
   account_id   = "${var.app_name}-cloudrun"
@@ -419,6 +482,21 @@ resource "google_cloud_run_v2_service" "api" {
       env {
         name  = "Channels__WhatsApp__BridgeUrl"
         value = data.google_cloud_run_v2_service.whatsapp_data.uri
+      }
+
+      env {
+        name = "Admin__ApiKey"
+        value_source {
+          secret_key_ref {
+            secret  = google_secret_manager_secret.admin_api_key.secret_id
+            version = "latest"
+          }
+        }
+      }
+
+      env {
+        name  = "Cors__AllowedOrigins__0"
+        value = "https://bot.phill.ie"
       }
 
       startup_probe {
@@ -541,6 +619,51 @@ resource "google_cloud_run_v2_service" "admin" {
       env {
         name  = "NEXT_PUBLIC_WS_URL"
         value = replace(google_cloud_run_v2_service.whatsapp.uri, "https://", "wss://")
+      }
+
+      env {
+        name  = "BACKEND_API_URL"
+        value = "${google_cloud_run_v2_service.api.uri}/api"
+      }
+
+      env {
+        name = "API_KEY"
+        value_source {
+          secret_key_ref {
+            secret  = google_secret_manager_secret.admin_api_key.secret_id
+            version = "latest"
+          }
+        }
+      }
+
+      env {
+        name = "AUTH_SECRET"
+        value_source {
+          secret_key_ref {
+            secret  = google_secret_manager_secret.auth_secret.secret_id
+            version = "latest"
+          }
+        }
+      }
+
+      env {
+        name  = "AUTH_GOOGLE_ID"
+        value = var.auth_google_client_id
+      }
+
+      env {
+        name  = "AUTH_GOOGLE_SECRET"
+        value = var.auth_google_client_secret
+      }
+
+      env {
+        name  = "AUTH_TRUST_HOST"
+        value = "true"
+      }
+
+      env {
+        name  = "ALLOWED_EMAIL"
+        value = var.admin_allowed_email
       }
     }
   }

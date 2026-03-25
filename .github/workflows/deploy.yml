@@ -147,6 +147,9 @@ jobs:
             -var-file="environments/${{ needs.setup.outputs.environment == 'production' && 'prod' || 'dev' }}.tfvars" \
             -var="project_id=${{ secrets.GCP_PROJECT_ID }}" \
             -var="image_tag=${{ needs.setup.outputs.image_tag }}" \
+            -var="auth_google_client_id=${{ secrets.AUTH_GOOGLE_CLIENT_ID }}" \
+            -var="auth_google_client_secret=${{ secrets.AUTH_GOOGLE_CLIENT_SECRET }}" \
+            -var="admin_allowed_email=${{ secrets.ADMIN_ALLOWED_EMAIL }}" \
             -out=tfplan
         working-directory: terraform
 
