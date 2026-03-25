@@ -1,5 +1,6 @@
 # Botty AI Assistant - GCP Infrastructure
 # This Terraform configuration deploys the complete Botty stack to GCP
+# Gen2 execution environment + Secret Manager admin permissions
 
 terraform {
   required_version = ">= 1.5.0"
