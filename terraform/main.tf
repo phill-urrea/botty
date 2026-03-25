@@ -469,7 +469,7 @@ resource "google_cloud_run_v2_service" "whatsapp" {
     execution_environment = "EXECUTION_ENVIRONMENT_GEN2"
 
     scaling {
-      min_instance_count = 1  # WhatsApp needs persistent connection
+      min_instance_count = 1 # WhatsApp needs persistent connection
       max_instance_count = 1
     }
 
