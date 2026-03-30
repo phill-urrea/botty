@@ -410,6 +410,29 @@ resource "google_project_iam_member" "cloudrun_cloudsql" {
   member  = "serviceAccount:${google_service_account.cloudrun.email}"
 }
 
+# GCS bucket for WhatsApp session persistence across container restarts
+resource "google_storage_bucket" "whatsapp_sessions" {
+  name                        = "${var.project_id}-whatsapp-sessions"
+  location                    = var.region
+  force_destroy               = true
+  uniform_bucket_level_access = true
+
+  lifecycle_rule {
+    condition {
+      age = 90
+    }
+    action {
+      type = "Delete"
+    }
+  }
+}
+
+resource "google_storage_bucket_iam_member" "whatsapp_sessions_admin" {
+  bucket = google_storage_bucket.whatsapp_sessions.name
+  role   = "roles/storage.objectAdmin"
+  member = "serviceAccount:${google_service_account.cloudrun.email}"
+}
+
 # Cloud Run - API Service
 resource "google_cloud_run_v2_service" "api" {
   name     = "${var.app_name}-api"
@@ -564,6 +587,7 @@ resource "google_cloud_run_v2_service" "whatsapp" {
           cpu    = "1"
           memory = "2Gi"
         }
+        cpu_idle = false
       }
 
       env {
@@ -581,6 +605,23 @@ resource "google_cloud_run_v2_service" "whatsapp" {
         value = "true"
       }
 
+      env {
+        name  = "SESSION_PATH"
+        value = "/data/whatsapp-sessions"
+      }
+
+      volume_mounts {
+        name       = "whatsapp-sessions"
+        mount_path = "/data/whatsapp-sessions"
+      }
+    }
+
+    volumes {
+      name = "whatsapp-sessions"
+      gcs {
+        bucket    = google_storage_bucket.whatsapp_sessions.name
+        read_only = false
+      }
     }
   }
 
